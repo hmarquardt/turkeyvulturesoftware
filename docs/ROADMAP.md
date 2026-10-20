@@ -3,22 +3,21 @@
 ## v1
 
 Editorial homepage; four service areas; AI-forward engineering positioning; clear
-project process; Site Autopsy and project email preparation; privacy and useful
+project process; Site Autopsy and project requests through a protected Worker form;
+Cloudflare Email Routing and Email Sending delivery; privacy and useful
 404; responsive/reduced-motion navigation; self-hosted original imagery; metadata,
 social card, robots, sitemap, revision endpoint; secure Cloudflare Worker; tested
 and documented GitHub Actions validate/deploy/verify pipeline triggered by main pushes.
 
-No automated audit, fake scores, contact database, online submission claim,
-client logos, invented case studies, blog, login, billing, portal, or CMS.
+No automated audit, fake scores, contact database, submission history, client
+logos, invented case studies, blog, login, billing, portal, or CMS.
 
 ## Next priorities
 
-1. Verify unattended deployment by supplying the existing stable account-owned
-   Cloudflare token as the repository Actions secret and pushing to main.
-2. Establish a project-specific mailbox and verify delivery/reply handling, then
-   replace email preparation with protected Worker submission. Keep direct email.
-3. Build a narrowly scoped, permission-aware Site Autopsy engine only after the
-   manual review offer is validated with real inquiries.
+1. Continue verifying the production form with real inquiries and reply handling.
+2. Build a narrowly scoped, permission-aware Site Autopsy engine only after the
+   manual review offer is validated with real inquiries. It must remain separate
+   from the current request form.
 
 ## Site Autopsy engine
 
@@ -33,7 +32,7 @@ Never imply a security certification or scan private/authenticated content.
 ## Conversion and service development
 
 With a privacy decision and explicit owner approval, measure actual funnel steps:
-CTA choice, intake starts, draft preparation/submission, and qualified leads. Never
+CTA choice, intake starts, form submission, and qualified leads. Never
 collect form contents in analytics. Optimize against real outcomes, not vanity
 traffic. Consider permission-based case studies from real delivered work, service
 examples with honest labels, and more specific automation/data offers once useful.

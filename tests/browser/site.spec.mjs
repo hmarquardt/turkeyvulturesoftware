@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+
 const paths = ['/', '/site-autopsy', '/contact', '/privacy', '/not-a-real-page'];
 for (const width of [320, 390, 768, 1440]) {
   for (const path of paths) {
@@ -22,6 +23,7 @@ for (const width of [320, 390, 768, 1440]) {
     });
   }
 }
+
 test('mobile menu works with keyboard and Escape; anchor CTA reaches services', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
@@ -34,52 +36,109 @@ test('mobile menu works with keyboard and Escape; anchor CTA reaches services', 
   await menu.click(); await page.getByRole('link', { name: 'What we do' }).click();
   await expect(page).toHaveURL(/#services$/);
 });
-test('site autopsy prepares a draft and does not submit any request', async ({ page }) => {
-  const writes = [];
-  page.on('request', r => { if (r.method() !== 'GET') writes.push(r.url()); });
-  await page.goto('/site-autopsy');
+
+async function stubTurnstile(page) {
+  await page.addInitScript(() => {
+    window.turnstile = {
+      render: (_element, options) => {
+        setTimeout(() => options.callback('test-turnstile-token'), 0);
+        return 'test-widget';
+      },
+      getResponse: () => 'test-turnstile-token',
+      reset: () => {},
+    };
+  });
+}
+
+async function fillAutopsy(page) {
   await page.getByLabel('Your name').fill('Alex & Company');
   await page.getByRole('textbox', { name: 'Your email (required)', exact: true }).fill('alex@example.com');
   await page.getByLabel('Website URL').fill('https://example.com');
-  await page.getByRole('button', { name: 'Prepare email' }).click();
-  await expect(page.getByRole('heading', { name: 'Your email is ready to review.' })).toBeFocused();
-  await expect(page.locator('#message-preview')).toHaveValue(/human review/);
-  const link = new URL(await page.getByRole('link', { name: 'Open email app' }).getAttribute('href'));
-  expect(link.pathname).toBe('hmarquardt@gmail.com');
-  expect(link.searchParams.get('body')).toContain('Alex & Company');
-  await page.getByRole('button', { name: 'Copy message' }).click();
-  await expect(page.locator('#form-status')).toContainText(/copied|Select and copy/);
-  await page.getByLabel('Your name').fill('Revised name');
-  await expect(page.locator('#email-preview')).toBeHidden();
-  expect(writes).toEqual([]);
+}
+
+test('site autopsy submits to the protected endpoint and shows success only after acceptance', async ({ page }) => {
+  await stubTurnstile(page);
+  let body;
+  await page.route('**/api/contact', async route => {
+    body = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, id: '11111111-2222-4333-8444-555555555555' }) });
+  });
+  await page.goto('/site-autopsy');
+  await fillAutopsy(page);
+  await page.getByRole('button', { name: 'Send request' }).click();
+  await expect(page.getByRole('heading', { name: 'Your request is on its way.' })).toBeFocused();
+  await expect(page.locator('#reference-id')).toHaveText('11111111-2222-4333-8444-555555555555');
+  await expect(page.locator('#intake-form')).toBeHidden();
+  await expect(page.locator('#email-preview')).toHaveCount(0);
+  expect(body.requestType).toBe('autopsy');
+  expect(body.name).toBe('Alex & Company');
+  expect(body.email).toBe('alex@example.com');
+  expect(body.website).toBe('https://example.com');
+  expect(body.service).toBe('');
+  expect(body.turnstileToken).toBe('test-turnstile-token');
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
 });
-test('project service is selected from a safe query value; URL validation prevents unsafe drafts', async ({ page }) => {
+
+test('project service is selected from a safe query value; URL validation blocks and valid input submits', async ({ page }) => {
+  await stubTurnstile(page);
+  let calls = 0, body;
+  await page.route('**/api/contact', async route => {
+    calls += 1;
+    body = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' }) });
+  });
   await page.goto('/contact?service=automation');
   await expect(page.getByLabel('What do you have in mind?')).toHaveValue('automation');
   await page.getByLabel('Your name').fill('Alex');
   await page.getByRole('textbox', { name: 'Your email (required)', exact: true }).fill('alex@example.com');
   await page.getByLabel('Tell us a little').fill('An invoicing workflow needs connecting.');
   await page.getByLabel('Website URL').fill('javascript:alert(1)');
-  await page.getByRole('button', { name: 'Prepare email' }).click();
-  await expect(page.locator('#email-preview')).toBeHidden();
+  await page.getByRole('button', { name: 'Send request' }).click();
+  await expect(page.locator('#url-error')).toContainText('http:// or https://');
+  expect(calls).toBe(0);
   await page.getByLabel('Website URL').fill('');
-  await page.getByRole('button', { name: 'Prepare email' }).click();
-  await expect(page.locator('#message-preview')).toHaveValue(/AI & business automation/);
+  await page.getByRole('button', { name: 'Send request' }).click();
+  await expect(page.getByRole('heading', { name: 'Your request is on its way.' })).toBeFocused();
+  expect(calls).toBe(1);
+  expect(body.requestType).toBe('project');
+  expect(body.service).toBe('automation');
+  expect(body.website).toBe('');
 });
+
+test('a rejected submission keeps the visitor input and offers a direct email fallback', async ({ page }) => {
+  await stubTurnstile(page);
+  await page.route('**/api/contact', route => route.fulfill({
+    status: 502,
+    contentType: 'application/json',
+    body: JSON.stringify({ ok: false, error: 'We couldn’t send your request right now. Please try again, or email us directly at contact@turkeyvulturesoftware.com.' }),
+  }));
+  await page.goto('/site-autopsy');
+  await fillAutopsy(page);
+  await page.getByRole('button', { name: 'Send request' }).click();
+  await expect(page.locator('#form-status')).toContainText('couldn’t send');
+  await expect(page.locator('#form-status')).toContainText('contact@turkeyvulturesoftware.com');
+  await expect(page.locator('#intake-form')).toBeVisible();
+  await expect(page.getByLabel('Your name')).toHaveValue('Alex & Company');
+  await expect(page.getByRole('button', { name: 'Send request' })).toBeEnabled();
+  await expect(page.locator('#intake-success')).toBeHidden();
+});
+
 test('no-JavaScript visitors retain navigation and direct contact', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   await page.goto(`${baseURL}/site-autopsy`);
   await expect(page.getByRole('link', { name: 'What we do' })).toBeVisible();
-  await expect(page.locator('.noscript-note')).toContainText('hmarquardt@gmail.com');
-  await expect(page.getByRole('button', { name: 'Prepare email' })).toBeDisabled();
+  await expect(page.locator('.noscript-note')).toContainText('contact@turkeyvulturesoftware.com');
+  await expect(page.getByRole('button', { name: 'Send request' })).toBeEnabled();
+  await expect(page.locator('.noscript-note a')).toHaveAttribute('href', 'mailto:contact@turkeyvulturesoftware.com');
   await context.close();
 });
+
 test('metadata, sitemap, security headers, 404 and reduced motion', async ({ page }) => {
   const response = await page.goto('/');
   const headers = await response.allHeaders();
   expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
+  expect(headers['content-security-policy']).toContain('https://challenges.cloudflare.com');
   expect(headers['cache-control']).toContain('no-transform');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
@@ -89,8 +148,10 @@ test('metadata, sitemap, security headers, 404 and reduced motion', async ({ pag
     sitemap: (await fetch('/sitemap.xml')).status,
     robots: await (await fetch('/robots.txt')).text(),
     submission: (await fetch('/api/inquiries', { method: 'POST', body: '{}' })).status,
+    contactGet: (await fetch('/api/contact')).status,
   }));
   expect(endpoints.sitemap).toBe(200);
   expect(endpoints.robots).toContain('Sitemap: https://turkeyvulturesoftware.com');
   expect(endpoints.submission).toBe(405);
+  expect(endpoints.contactGet).toBe(405);
 });

@@ -7,7 +7,7 @@ const config = JSON.parse(readFileSync('wrangler.json', 'utf8'));
 const deploymentId = '12345678-1234-1234-1234-123456789abc';
 const versionId = 'dc580544-84b8-457f-92bb-674a9936ce9a';
 const commit = 'a'.repeat(40);
-const settings = () => ({ success: true, result: { bindings: [{ type: 'assets', name: 'ASSETS' }] } });
+const settings = () => ({ success: true, result: { bindings: [{ type: 'assets', name: 'ASSETS' }, { type: 'secret_text', name: 'TURNSTILE_SECRET' }] } });
 const deployment = () => ({ success: true, result: { deployments: [{ id: deploymentId, strategy: 'percentage', versions: [{ version_id: versionId, percentage: 100 }] }] } });
 
 test('granular authentication and deployment checks use only Worker-specific GET endpoints', async () => {
@@ -30,8 +30,25 @@ test('only the pinned account, Worker and exact trigger declaration are permitte
   }
 });
 
+test('the known assets, Turnstile, email and rate-limit bindings are accepted', () => {
+  assert.doesNotThrow(() => validateWorkerSettings(settings()));
+  assert.doesNotThrow(() => validateWorkerSettings({ success: true, result: { bindings: [
+    { type: 'assets', name: 'ASSETS' },
+    { type: 'secret_text', name: 'TURNSTILE_SECRET' },
+    { type: 'send_email', name: 'SEND_EMAIL' },
+    { type: 'ratelimit', name: 'CONTACT_RATE_LIMIT' },
+  ] } }));
+});
+
 test('malformed Worker metadata and unexpected bindings fail closed', () => {
-  for (const payload of [null, {}, { success: false }, { success: true, result: {} }, { success: true, result: { bindings: [] } }, { success: true, result: { bindings: [{ type: 'assets', name: 'WRONG' }] } }, { success: true, result: { bindings: [{ type: 'secret_text', name: 'SECRET' }] } }]) assert.throws(() => validateWorkerSettings(payload));
+  for (const payload of [
+    null, {}, { success: false }, { success: true, result: {} }, { success: true, result: { bindings: [] } },
+    { success: true, result: { bindings: [{ type: 'assets', name: 'WRONG' }, { type: 'secret_text', name: 'TURNSTILE_SECRET' }] } },
+    { success: true, result: { bindings: [{ type: 'assets', name: 'ASSETS' }] } },
+    { success: true, result: { bindings: [{ type: 'secret_text', name: 'SECRET' }] } },
+    { success: true, result: { bindings: [{ type: 'assets', name: 'ASSETS' }, { type: 'secret_text', name: 'TURNSTILE_SECRET' }, { type: 'kv_namespace', name: 'CACHE' }] } },
+    { success: true, result: { bindings: [{ type: 'assets', name: 'ASSETS' }, { type: 'assets', name: 'ASSETS' }, { type: 'secret_text', name: 'TURNSTILE_SECRET' }] } },
+  ]) assert.throws(() => validateWorkerSettings(payload));
 });
 
 test('missing, malformed, split or partial active deployments prevent publication', () => {

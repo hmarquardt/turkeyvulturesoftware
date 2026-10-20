@@ -18,7 +18,8 @@ The raw checkout, docs, tests, and configuration are never uploaded as assets.
 1. Worker-first routing executes for every request, including assets.
 2. `www` and HTTP apex requests get a 308 HTTPS apex redirect, preserving path/query.
 3. GET/HEAD pass to `ASSETS`; missing paths use `404.html` with real 404 status.
-4. Other methods receive 405; there is no online submission endpoint.
+4. `POST /api/contact` runs the intake handler; other non-GET/HEAD requests receive
+   405. The handler alone may send mail, and only to the fixed inbox.
 5. Responses receive CSP, no-sniff, referrer/permissions policy, and HTTPS HSTS.
    Workers.dev responses are marked noindex. Version responses use no-store.
    HTML responses add `Cache-Control: no-transform` to prevent automatic analytics
@@ -29,39 +30,60 @@ Worker invocation cost for predictable routing. There is no SPA fallback.
 
 ## Intake flow and data
 
-Both intake pages accept name, email, business, website, and a description. Site
-Autopsy requires a public website URL; project intake requires a description and
-allows service selection. HTML/browser validation plus HTTP(S) URL checks run
-before drafting. The browser builds plain text, encodes a `mailto:` link, and shows
-a copyable preview. The visitor opens and sends from their own email provider.
-Editing inputs invalidates the previous preview. No draft reaches the Worker,
-local/session storage, cookies, telemetry, or an AI service.
+Both intake pages accept name, email, optional business name, optional website,
+optional service area, and a description. Site Autopsy requires a public website
+URL and treats the description as optional; project intake requires a service and a
+description of at least 20 characters. The browser validates before sending and
+posts JSON to `POST /api/contact` on the same Worker.
 
-The owner’s public GitHub email `hmarquardt@gmail.com` was verified through the
-authenticated GitHub user API and matches the authenticated Cloudflare identity.
-This establishes an existing contact address; it is not a claim of inbox delivery
-verification. No brand-domain mailbox is invented. Gmail processes correspondence
-only after a visitor sends it. A prepared draft is never represented as submitted.
+The server independently enforces the same limits and rejects non-object JSON,
+unknown request types, bad emails or URLs, control characters, oversized bodies
+(16 KB), non-JSON content types, unapproved origins, filled honeypots, missing or
+rejected Turnstile tokens, and rate-limit exhaustion. Single-line fields are
+stripped of line breaks before they reach mail headers. Emails are plain text, with
+a fixed `From`, fixed `To`, and the visitor's validated address only in `Reply-To`.
+Visitor input cannot choose a recipient, sender, subject, or header.
 
-The UI explicitly offers manual copy for devices without a mail handler, and a
-direct email fallback with JavaScript disabled. CSP forbids HTML form submission
-so a script failure cannot leak contact fields into a GET query.
+Turnstile is loaded only when the visitor starts the form. The widget action is
+`contact`; the server verifies the token at Cloudflare's Siteverify endpoint with a
+five-second timeout and checks action and hostname. `CONTACT_RATE_LIMIT` allows five
+submissions per 60 seconds per client IP in each Cloudflare location. Both checks
+fail closed when unconfigured or unavailable.
+
+The Worker sends a structured message through the `SEND_EMAIL` binding to
+`hmarquardt@gmail.com` from `contact@turkeyvulturesoftware.com`. Each request
+carries a generated UUID reference and a UTC timestamp. The browser shows success
+and the reference only after `send()` resolves; provider rejection returns 502 and
+keeps the form contents. No inquiry is written to D1, KV, cookies, local/session
+storage, analytics, or Worker logs. Logs contain only the event name, reference, and
+provider error code.
+
+Incoming mail uses Cloudflare Email Routing, separately from Email Sending. Literal
+rules forward `hank@` and `contact@turkeyvulturesoftware.com` to the verified Gmail
+destination. Catch-all is disabled. Cloudflare supplies routing MX, SPF, and DKIM
+records; Email Sending supplies `cf-bounce` MX, SPF, and DKIM records. DMARC is
+`p=reject`.
+
+The UI keeps a direct `contact@turkeyvulturesoftware.com` fallback and a no-JavaScript
+note. CSP still forbids native HTML form submission, so a script failure cannot leak
+contact fields into a URL. Turnstile origins are the only added CSP sources.
 
 ## Dependencies and boundaries
 
-Production: Cloudflare and the visitor’s chosen email service. All site assets
-are self-hosted. No analytics or third-party browser requests.
+Production: Cloudflare (Workers Static Assets, Turnstile, rate limiting, Email
+Routing, Email Sending) and Google Gmail for the destination inbox. All site
+assets are self-hosted. Turnstile is the only third-party browser resource, and it
+loads only after form interaction. No analytics or tracking requests.
 Development: Wrangler, Playwright, axe, html-validate, sharp (asset preparation),
 and yaml (release-policy regression checks).
-Cloudflare authentication stays in local Wrangler state or an Actions secret.
-Current browser helpers never fetch user-provided URLs; adding scanning requires
-a separate SSRF/permission/resource-limit design.
+Cloudflare authentication stays in local Wrangler state or an Actions secret; the
+Turnstile secret is a Worker secret, never a repository file. The browser never
+fetches user-provided URLs; adding scanning requires a separate
+SSRF/permission/resource-limit design.
 
-An eventual `/api/inquiries` handler can replace email preparation behind the
-same page fields. Before activation: project-specific email configuration, receipt
-verification, server-side validation, Turnstile verification, rate limiting,
-timeouts, sanitized logs, duplicate handling, and updated privacy information.
-No speculative persistence or scanner infrastructure is included in v1.
+Only the fixed contact binding may send mail. No D1/KV storage, alternate
+recipient, open relay, or submission history exists. No speculative scanner
+infrastructure is included.
 
 ## Release safety
 
@@ -71,9 +93,10 @@ inventory API requires legacy permissions and is not used. No extra account
 permissions or application resources are needed.
 
 The gate pins the account, Worker and source trigger declarations. It authenticates
-Worker settings, validates the existing ASSETS binding and a single active version
-at 100%, and snapshots deployment identity plus matching apex/workers.dev public
-revisions and the www redirect. Any metadata/permission/routing failure blocks
+Worker settings, validates only the known `ASSETS`, `TURNSTILE_SECRET`, `SEND_EMAIL`,
+and `CONTACT_RATE_LIMIT` bindings and a single active version at 100%, and snapshots
+deployment identity plus matching apex/workers.dev public revisions and the www
+redirect. Any metadata/permission/routing failure blocks
 publication. Before activation, the baseline must remain unchanged and the exact
 uploaded UUID must carry the validated Git SHA tag. After activation the Worker
 API must identify that UUID at 100%; public HTTPS checks require the same Git SHA

@@ -27,7 +27,8 @@ git push origin main
 1. **Validate:** install the lockfile with Node 24, check HTML/links/targets and Node
    tests, build, dry-run the version upload, and run Playwright/axe browser tests.
 2. **Preflight:** authenticate through the pinned Worker's settings GET API,
-   validate the expected ASSETS binding, and read its active deployment. Require
+   validate only the known `ASSETS`, `TURNSTILE_SECRET`, `SEND_EMAIL`, and
+   `CONTACT_RATE_LIMIT` bindings, and read its active deployment. Require
    one valid version at 100%. Compare public apex/workers.dev revision identifiers
    and check the exact www 308 redirect. Persist this baseline on the runner.
 3. **Upload:** `wrangler versions upload --no-x-provision`, tagged with the Git SHA.
@@ -113,8 +114,77 @@ does not derive a production host and rewrite redirects into a local loop.
 HTML uses `Cache-Control: no-transform` to prevent automatic analytics injection.
 This is response-scoped; unrelated account/zone settings are untouched.
 
-Email intake remains browser-side draft preparation. No SMTP/API delivery, mailbox,
-Turnstile widget or storage is provisioned by deployment. Those are separate work.
+## Email and form resources
+
+These resources are provisioned once, outside the Git release. Normal deployments
+only upload code and the declared `send_email` and `ratelimits` bindings; they do
+not create mailboxes, DNS records, widgets, or secrets.
+
+### Incoming: Email Routing
+
+- Zone `turkeyvulturesoftware.com` is enabled (`status: ready`).
+- Destination `hmarquardt@gmail.com` is verified at account level.
+- Literal rule `Hank forwarding`: `hank@turkeyvulturesoftware.com` → forward to
+  `hmarquardt@gmail.com` (ID `f6491f49c9124c5191eb71390a17f368`).
+- Literal rule `Contact forwarding`: `contact@turkeyvulturesoftware.com` → forward
+  to `hmarquardt@gmail.com` (ID `ffe28b0003504c9e82aac7bafc2f9d51`).
+- Catch-all is disabled (`drop`).
+- Cloudflare added apex MX (`route1/2/3.mx.cloudflare.net`), SPF
+  `v=spf1 include:_spf.mx.cloudflare.net ~all`, and DKIM at
+  `cf2024-1._domainkey`. No prior MX or SPF existed, so no policy was merged or
+  duplicated.
+
+### Outgoing: Email Sending
+
+- Email Sending is enabled for `turkeyvulturesoftware.com` (tag
+  `525e02c1905243e187a932f51f7aa95d`).
+- DKIM selector `cf-bounce`; return path `cf-bounce.turkeyvulturesoftware.com`.
+- Cloudflare added `cf-bounce` MX, SPF, and DKIM, plus DMARC
+  `v=DMARC1; p=reject;`.
+- `wrangler.json` declares `SEND_EMAIL` with the fixed destination
+  `hmarquardt@gmail.com` and sender allowlist
+  `contact@turkeyvulturesoftware.com`.
+- `CONTACT_RATE_LIMIT` uses namespace `4302` (5 requests per 60 seconds).
+- `TURNSTILE_SECRET` is a Worker secret, not repository configuration. Provision it
+  once with:
+  `npx wrangler secret put TURNSTILE_SECRET --name turkey-vulture-software`.
+  This is not a code release; it must not be added to CI or committed.
+
+The public Turnstile site key is in `src/pages.mjs`. The widget
+`turkeyvulture-contact` allows the apex, `www`, the workers.dev hostname, and local
+development hosts. Do not reuse the AI Small Business Guru widget.
+
+### Verification and troubleshooting
+
+```sh
+npx wrangler email routing settings turkeyvulturesoftware.com
+npx wrangler email routing rules list turkeyvulturesoftware.com
+npx wrangler email routing addresses list
+npx wrangler email sending settings turkeyvulturesoftware.com
+dig +short MX turkeyvulturesoftware.com @1.1.1.1
+dig +short TXT turkeyvulturesoftware.com @1.1.1.1
+dig +short TXT cf-bounce._domainkey.turkeyvulturesoftware.com @1.1.1.1
+dig +short TXT _dmarc.turkeyvulturesoftware.com @1.1.1.1
+```
+
+Retained routing and sending events are available through the GraphQL Analytics
+API datasets `emailRoutingAdaptive` and `emailSendingAdaptive` (zone-level, last 31
+days). On October 20, 2026, Cloudflare reported both routing tests as
+`status: delivered`, `action: forward`, with SPF, DKIM, and DMARC passing and
+distinct `to` addresses. Cloudflare Email Sending reported the outbound copies as
+delivered. This is provider delivery evidence; it does not read the Gmail mailbox.
+
+- **No forwarding:** confirm the destination is verified, the literal rule is
+  enabled, catch-all remains disabled, and MX/SPF/DKIM records resolve.
+- **Form returns 503:** inspect `TURNSTILE_SECRET`, the `CONTACT_RATE_LIMIT`
+  binding, and the Worker version bindings.
+- **Form returns 403:** the Turnstile token may be expired, replayed, from another
+  hostname/action, or the client IP may be missing. Refresh and retry.
+- **Form returns 502:** Cloudflare Email Sending rejected or failed the message.
+  `wrangler tail` records only `contact_send_failed` with a request ID and provider
+  code, never inquiry content. Check sending domain status and suppression lists.
+- **Rate limit:** 5 per 60 seconds per client IP and Cloudflare location; the error
+  includes the direct email fallback.
 
 ## History and compatibility findings
 

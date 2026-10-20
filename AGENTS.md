@@ -8,9 +8,12 @@ styles and browser interactions in `public/assets/`. The build copies only `publ
 and renders the known pages. Never copy the checkout into `dist/`.
 
 Do not add a client framework, database, CRM, analytics service, or scanner without
-an actual product requirement. Site Autopsy currently requests a human review.
-Email preparation happens only in browser memory. Never imply that a draft has
-been submitted. Preserve direct email and no-JavaScript fallbacks.
+an actual product requirement. Site Autopsy requests a human review; it is not an
+automated scan. The two forms submit only to `POST /api/contact` on the existing
+Worker. Never add a second Worker, alternate recipient, client-controlled sender,
+mail relay, or submission history. Show success only after Cloudflare Email Service
+accepts the message. Preserve the direct email and no-JavaScript fallbacks, and keep
+submitted contents out of logs, analytics, and browser storage.
 
 ## Engineering
 
@@ -31,10 +34,22 @@ recipient without explicit authorization.
 Never commit or print tokens, OAuth sessions, `.env`, `.dev.vars`, private keys,
 contact contents, or local credentials. Examples must be placeholders. Do not
 copy rotating OAuth credentials into CI. No visitor content in operational logs.
-Future forms require server-side validation, bounded request reads, anti-abuse,
-verified delivery, clear failure states, and an appropriate privacy update.
-Future URL scanning requires a separate SSRF and authorization design; the current
-email helper does not fetch submitted URLs.
+The contact endpoint validates server-side, reads bodies with a 16 KB cap, verifies
+Turnstile, enforces the `CONTACT_RATE_LIMIT` binding, and sends only through the
+fixed `SEND_EMAIL` binding. Do not weaken the fixed sender/destination, skip
+Turnstile or rate limiting, or log inquiry fields. Future URL scanning requires a
+separate SSRF and authorization design; the current site does not fetch submitted
+URLs.
+
+Email resources are project-specific and must not be shared with another site:
+
+- Turnstile widget `turkeyvulture-contact` (public site key in `src/pages.mjs`).
+- Worker secret `TURNSTILE_SECRET` (never committed).
+- Rate-limit namespace `4302`, binding `CONTACT_RATE_LIMIT`, 5 per 60 seconds.
+- `send_email` binding `SEND_EMAIL`: sender `contact@turkeyvulturesoftware.com`,
+  destination `hmarquardt@gmail.com`.
+- Email Routing rules for `hank@` and `contact@`, both forwarding to the verified
+  Gmail destination; catch-all stays disabled.
 
 Only deploy `turkey-vulture-software` in the account declared in `wrangler.json`.
 Only attach `turkeyvulturesoftware.com` and `www.turkeyvulturesoftware.com`.
@@ -69,6 +84,9 @@ pinned Worker through granular-compatible settings/deployment/version GET APIs.
 Snapshot its active deployment and public revision baseline; block activation if
 these change during upload, or the uploaded UUID/Git SHA tag is wrong. Confirm
 100% activation through the Worker API and verify the exact revision over HTTPS.
+The release preflight only accepts `ASSETS`, `TURNSTILE_SECRET`, `SEND_EMAIL`, and
+`CONTACT_RATE_LIMIT` bindings. Add any future binding to that allowlist and its
+regression tests deliberately; never let CI upload arbitrary resources.
 
 Do not call the account-wide `/workers/domains` inventory endpoint: its legacy
 permissions are incompatible with Individual Workers Editor even with a service

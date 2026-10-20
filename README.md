@@ -51,22 +51,50 @@ the historical bootstrap, and rollback.
 ## What ships
 
 - Homepage with all four service areas, approach, process, and conversion paths.
-- `/site-autopsy`: request a human website review by preparing an email.
-- `/contact`: project intake with service selection and a reviewable email draft.
+- `/site-autopsy`: request a human website review through the protected form.
+- `/contact`: project intake with service selection and the same protected form.
 - `/privacy`, useful 404, metadata, social card, robots, sitemap, version endpoint.
 - Responsive navigation, keyboard focus, reduced motion, self-hosted original imagery.
 
-**Contact is email-first.** Forms prepare messages in the browser, then the visitor
-sends from their email app or copies into webmail. The recipient is the owner's
-verified public GitHub email, also matching the authenticated Cloudflare identity.
-No message is submitted to the website. No database, tracking, cookies, automated
-scanner, delivery promise, or fake success screen. Automated submission is deferred
-until the project mailbox and delivery path are verified end to end.
+**Contact is server-side and email-delivered.** Both forms submit JSON to
+`POST /api/contact` on the existing Worker. The browser shows success only after
+Cloudflare Email Service accepts the message. The Worker sends to the fixed
+verified inbox `hmarquardt@gmail.com` from `contact@turkeyvulturesoftware.com`,
+with the visitor's validated address as `Reply-To`. Nothing is stored in a
+database, CRM, or browser storage. No tracking, automated scanner, fabricated
+success screen, or WhatsApp-style relay is involved.
+
+## Email
+
+Inbound and outbound email are separate Cloudflare features:
+
+| Direction | Feature | Configuration |
+| --- | --- | --- |
+| Incoming | Email Routing | `hank@` and `contact@turkeyvulturesoftware.com` forward to the verified `hmarquardt@gmail.com`; catch-all disabled. |
+| Outgoing | Email Sending (`send_email` binding) | Fixed sender `contact@turkeyvulturesoftware.com`, fixed destination `hmarquardt@gmail.com`, sender allowlist. |
+
+The `turkeyvulturesoftware.com` zone is enabled for both routing and sending.
+Cloudflare manages the routing MX/SPF/DKIM records and the sending `cf-bounce`
+MX/SPF/DKIM records. DMARC is published as `p=reject`. The Worker never accepts a
+client-supplied recipient or sender.
+
+Both public addresses were tested on October 20, 2026 by sending from
+`contact@turkeyvulturesoftware.com` through Cloudflare Email Sending. Cloudflare's
+routing activity log recorded `status: delivered`, `action: forward`, with SPF,
+DKIM, and DMARC passing for messages addressed to `hank@` and `contact@`
+separately. That confirms Cloudflare delivery to the verified destination; it does
+not independently read the Gmail mailbox UI.
+
+The form endpoint is protected by server-side Turnstile verification, a Cloudflare
+rate-limit binding (5 requests per 60 seconds per client IP and location), strict
+schema/length limits, URL and email validation, a hidden honeypot, origin and
+content-type checks, bounded body reads, and safe plain-text email construction.
+Logs contain only the request ID and provider error code, never inquiry content.
 
 ## Files
 
 - `src/pages.mjs`: shared HTML layout, content, metadata; rendered during build.
-- `src/worker.mjs`: domain redirects, security headers, static delivery, method limits.
+- `src/worker.mjs`: domain redirects, security headers, static delivery, method limits, and the validated `/api/contact` endpoint.
 - `public/`: the only copied production asset directory; no third-party runtime assets.
 - `scripts/`: deterministic build, checks, production verification.
 - `tests/`: Node contract tests and Playwright/axe browser checks.

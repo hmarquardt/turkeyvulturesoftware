@@ -6,6 +6,20 @@
   "compatibility_date": "2026-10-19",
   "workers_dev": true,
   "preview_urls": false,
+  "send_email": [
+    {
+      "name": "SEND_EMAIL",
+      "destination_address": "hmarquardt@gmail.com",
+      "allowed_sender_addresses": ["contact@turkeyvulturesoftware.com"]
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "CONTACT_RATE_LIMIT",
+      "namespace_id": "4302",
+      "simple": { "limit": 5, "period": 60 }
+    }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

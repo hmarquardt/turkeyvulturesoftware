@@ -31,7 +31,21 @@ export const SHA = /^[a-f0-9]{40}$/;
 export function validateWorkerSettings(payload) {
   assert.ok(payload?.success === true && Array.isArray(payload.result?.bindings), 'Malformed Worker settings; refusing deployment.');
   const bindings = payload.result.bindings;
-  assert.ok(bindings.length === 1 && bindings[0]?.type === 'assets' && bindings[0]?.name === 'ASSETS', 'Unexpected Worker bindings; refusing deployment.');
+  // Normal releases may only carry the assets, Turnstile secret, fixed email and rate-limit bindings.
+  const allowed = new Map([
+    ['assets', 'ASSETS'],
+    ['secret_text', 'TURNSTILE_SECRET'],
+    ['send_email', 'SEND_EMAIL'],
+    ['ratelimit', 'CONTACT_RATE_LIMIT'],
+  ]);
+  const seen = new Set();
+  for (const binding of bindings) {
+    assert.ok(binding && allowed.get(binding.type) === binding.name, 'Unexpected Worker binding; refusing deployment.');
+    assert.ok(!seen.has(binding.name), 'Duplicate Worker binding; refusing deployment.');
+    seen.add(binding.name);
+  }
+  assert.ok(seen.has('ASSETS'), 'Missing static asset binding; refusing deployment.');
+  assert.ok(seen.has('TURNSTILE_SECRET'), 'Missing Turnstile secret binding; refusing deployment.');
 }
 
 export function validateDeployment(payload) {

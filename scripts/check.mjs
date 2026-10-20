@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { HtmlValidate } from 'html-validate';
-import { pages, layout, origin, contactEmail } from '../src/pages.mjs';
+import { pages, layout, origin, contactEmail, hankEmail, turnstileSiteKey } from '../src/pages.mjs';
 const validator = new HtmlValidate({ extends: ['html-validate:recommended'], rules: { 'no-trailing-whitespace': 'off', 'long-title': 'off', 'svg-focusable': 'off' } });
 for (const page of pages) {
   const html = layout(page);
@@ -13,7 +13,9 @@ for (const page of pages) {
     else assert.ok(pages.some(p => p.path === url.pathname), `Broken link: ${match[1]}`);
   }
 }
-assert.equal(contactEmail, 'hmarquardt@gmail.com');
+assert.equal(contactEmail, 'contact@turkeyvulturesoftware.com');
+assert.equal(hankEmail, 'hank@turkeyvulturesoftware.com');
+assert.match(turnstileSiteKey, /^0x[0-9A-Za-z_-]{20,}$/);
 const config = JSON.parse(await readFile('wrangler.json', 'utf8'));
 assert.equal(config.name, 'turkey-vulture-software');
 assert.equal(config.account_id, 'b1aa310aa0a1638d72b8b086a21e557c');
@@ -23,7 +25,17 @@ for (const route of config.routes || []) {
   assert.ok(['turkeyvulturesoftware.com', 'www.turkeyvulturesoftware.com'].includes(route.pattern));
   assert.equal(route.custom_domain, true);
 }
-assert.ok(!config.d1_databases && !config.kv_namespaces && !config.send_email);
+assert.ok(!config.d1_databases && !config.kv_namespaces);
+assert.deepEqual(config.send_email, [{
+  name: 'SEND_EMAIL',
+  destination_address: 'hmarquardt@gmail.com',
+  allowed_sender_addresses: ['contact@turkeyvulturesoftware.com'],
+}]);
+assert.deepEqual(config.ratelimits, [{
+  name: 'CONTACT_RATE_LIMIT',
+  namespace_id: '4302',
+  simple: { limit: 5, period: 60 },
+}]);
 const required = ['README.md', 'AGENTS.md', 'docs/BRAND.md', 'docs/ARCHITECTURE.md', 'docs/DEPLOYMENT.md', 'docs/ROADMAP.md', 'docs/ASSETS.md', '.gitignore'];
 for (const file of required) assert.ok((await readFile(file, 'utf8')).trim().length > 100, `Missing documentation: ${file}`);
 for (const name of await readdir('public')) assert.ok(!name.startsWith('.') && !/secret|credential|\.env/.test(name));
