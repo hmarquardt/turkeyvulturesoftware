@@ -56,14 +56,59 @@ the historical bootstrap, and rollback.
 - `/contact`: project intake with service selection and the same protected form.
 - `/privacy`, useful 404, metadata, social card, robots, sitemap, version endpoint.
 - Responsive navigation, keyboard focus, reduced motion, self-hosted original imagery.
+- Self-hosted, cookie-free analytics through the existing CFLab Analytics Site; pageviews, contact CTA clicks, and confirmed intake events only.
 
 **Contact is server-side and email-delivered.** Both forms submit JSON to
 `POST /api/contact` on the existing Worker. The browser shows success only after
 Cloudflare Email Service accepts the message. The Worker sends to the fixed
 verified inbox `hmarquardt@gmail.com` from `contact@turkeyvulturesoftware.com`,
 with the visitor's validated address as `Reply-To`. Nothing is stored in a
-database, CRM, or browser storage. No tracking, automated scanner, fabricated
-success screen, or WhatsApp-style relay is involved.
+database, CRM, or browser storage, and inquiry contents are never sent to
+analytics. No automated scanner, fabricated success screen, or WhatsApp-style
+relay is involved.
+
+## Analytics
+
+The site reports to the existing CFLab Analytics Worker at
+`https://analytics.aismallbizguru.com`. Turkey Vulture is a first-class Site in
+the existing `cflab-analytics` database; this repository adds no analytics Worker,
+D1 database, dashboard, or tracking backend.
+
+| Field | Value |
+| --- | --- |
+| Name / slug | Turkey Vulture Software / `turkeyvulturesoftware` |
+| Public tracking ID | `as_5wh58kbCgGxaRewfGznoaC` (public configuration, not a secret) |
+| Domains | `turkeyvulturesoftware.com` (primary), `www.turkeyvulturesoftware.com` (alias) |
+| Privacy | DNT and GPC respected, 90-day raw retention, UTC days, active |
+| Collector | `POST https://analytics.aismallbizguru.com/collect` |
+
+`public/assets/analytics.js` is the self-hosted client. The page loads no
+executable analytics script from another origin. It uses no cookies or
+`localStorage`; the anonymous session ID lives in `sessionStorage` only and
+rotates after 30 minutes of inactivity. Only the pathname (never the query
+string) and supported UTM parameters are read from the URL. The collector
+reduces the referrer to a hostname and derives coarse browser/OS/device and
+Cloudflare country/region values. DNT or GPC suppresses every request. The
+client is inactive on local development, tests without an explicit test flag,
+and the `workers.dev` hostname.
+
+| Event | Kind | Properties | Source |
+| --- | --- | --- | --- |
+| `pageview` | pageview | — | automatic, exactly once per page load |
+| `contact_cta_click` | event | `destination` (`autopsy`, `project`, `email`), `placement` (`navigation`, `footer`, `hero`, `services`, `approach`, `autopsy-band`, `how-we-build`, `page`) | one delegated link listener |
+| `intake_submit` | event | `kind` (`autopsy`, `project`), and the controlled project `category` when applicable | `intake.js`, only after `response.ok && result.ok` from `/api/contact` |
+
+Names, email addresses, business names, website URLs, descriptions, reference
+IDs, Turnstile tokens, and other form contents are never sent to analytics. A
+failed validation, rejected Turnstile check, rate limit, or delivery failure
+does not produce `intake_submit`. Pageviews cover ordinary page interest; there
+is no duplicate custom "page visit" event.
+
+The Worker CSP allows the collector only through `connect-src`; `script-src`,
+`frame-src`, and `form-action` retain their existing restrictions. Analytics
+requests are fire-and-forget and silent: a blocked or failed collector cannot
+change navigation or form behavior. Production verification checks the
+self-hosted client, Site ID, endpoint, and CSP.
 
 ## Email
 
@@ -96,7 +141,7 @@ Logs contain only the request ID and provider error code, never inquiry content.
 
 - `src/pages.mjs`: shared HTML layout, content, metadata; rendered during build.
 - `src/worker.mjs`: domain redirects, security headers, static delivery, method limits, and the validated `/api/contact` endpoint.
-- `public/`: the only copied production asset directory; no third-party runtime assets.
+- `public/`: the only copied production asset directory; all site code is self-hosted.
 - `scripts/`: deterministic build, checks, production verification.
 - `tests/`: Node contract tests and Playwright/axe browser checks.
 - `.github/workflows/production.yml`: automatic validate → deploy → verify pipeline for main pushes.

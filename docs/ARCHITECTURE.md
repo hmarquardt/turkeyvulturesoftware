@@ -5,7 +5,9 @@
 Vanilla HTML/CSS/JS, rendered from a small JavaScript template at build time. A
 single Cloudflare Worker serves Static Assets and handles cross-domain redirects
 and security headers. No framework, runtime package dependency, server database,
-or external form provider. Node 24 is the CI baseline; package versions and the
+external form provider, or analytics backend. Privacy-conscious analytics reports
+to the existing first-party-operated CFLab Analytics service through one
+self-hosted browser client. Node 24 is the CI baseline; package versions and the
 lockfile are committed.
 
 `src/pages.mjs` defines page content, layout, canonical metadata, and the known
@@ -27,10 +29,49 @@ known page list so the build and sitemap include them.
 5. Responses receive CSP, no-sniff, referrer/permissions policy, and HTTPS HSTS.
    Workers.dev responses are marked noindex. Version responses use no-store.
    HTML responses add `Cache-Control: no-transform` to prevent automatic analytics
-   injection by Cloudflare. The browser suite rejects third-party requests.
+   injection by Cloudflare. The site's own analytics client is explicit and
+   self-hosted. The browser suite permits only local assets, Turnstile when a form
+   is used, and the exact analytics collector.
 
 Worker-first keeps redirect/security behavior consistent. This trades a small
 Worker invocation cost for predictable routing. There is no SPA fallback.
+
+## Analytics flow
+
+Every page loads `/assets/analytics.js` with `defer`. The file is served from the
+site's own origin; no executable analytics script is loaded from the collector.
+The public Site ID is `as_5wh58kbCgGxaRewfGznoaC`, registered for
+`turkeyvulturesoftware.com` (primary) and `www.turkeyvulturesoftware.com` (alias)
+in the existing CFLab Analytics service at
+`https://analytics.aismallbizguru.com/collect`.
+
+The client sends one `pageview` per page load, including `/how-we-build` and the
+404 page. It reports pathname only, plus the five supported UTM parameters when
+present. It creates no cookies and no `localStorage` identifier. An anonymous
+session ID is kept in `sessionStorage` and rotates after 30 minutes without
+activity. DNT and GPC suppress all requests. The client is inert on localhost,
+the `workers.dev` hostname, and tests unless a controlled test explicitly opts in.
+
+One delegated, capturing click listener emits `contact_cta_click` for links to
+`/site-autopsy`, `/contact`, or `mailto:` links. Its properties are restricted to
+`destination` (`autopsy`, `project`, `email`) and a fixed `placement` set. It
+never calls `preventDefault`; normal navigation and mail handling remain intact.
+No page markup depends on analytics attributes.
+
+`intake.js` calls the client only inside the confirmed-success branch, after
+`response.ok && result.ok`. A guard prevents a second accepted-inquiry event.
+`intake_submit` carries `kind` (`autopsy` or `project`) and, for project
+inquiries, the controlled service category. It never reads or serializes name,
+email, business, website, description, reference ID, Turnstile token, or any other
+form value. Validation failures, Turnstile rejection, rate limiting, and delivery
+errors never reach that branch.
+
+CSP allows the exact collector only through `connect-src`. `script-src`,
+`frame-src`, and `form-action` are unchanged, so the analytics service cannot
+provide executable code and native form submission remains forbidden. Analytics
+fetches use `keepalive`, fail silently, and cannot delay or alter navigation,
+rendering, or form success. The Worker has no analytics binding, database, or
+server-side forwarding path.
 
 ## Intake flow and data
 
@@ -58,9 +99,10 @@ The Worker sends a structured message through the `SEND_EMAIL` binding to
 `hmarquardt@gmail.com` from `contact@turkeyvulturesoftware.com`. Each request
 carries a generated UUID reference and a UTC timestamp. The browser shows success
 and the reference only after `send()` resolves; provider rejection returns 502 and
-keeps the form contents. No inquiry is written to D1, KV, cookies, local/session
-storage, analytics, or Worker logs. Logs contain only the event name, reference, and
-provider error code.
+keeps the form contents. No inquiry contents are written to D1, KV, cookies,
+local/session storage, analytics, or Worker logs. Logs contain only the event name,
+reference, and provider error code. Analytics receives only the accepted-inquiry
+kind and controlled category, never a form field.
 
 Incoming mail uses Cloudflare Email Routing, separately from Email Sending. Literal
 rules forward `hank@` and `contact@turkeyvulturesoftware.com` to the verified Gmail
@@ -70,14 +112,17 @@ records; Email Sending supplies `cf-bounce` MX, SPF, and DKIM records. DMARC is
 
 The UI keeps a direct `contact@turkeyvulturesoftware.com` fallback and a no-JavaScript
 note. CSP still forbids native HTML form submission, so a script failure cannot leak
-contact fields into a URL. Turnstile origins are the only added CSP sources.
+contact fields into a URL. Turnstile and the exact analytics collector are the only
+added CSP sources; the collector is allowed for connections only.
 
 ## Dependencies and boundaries
 
 Production: Cloudflare (Workers Static Assets, Turnstile, rate limiting, Email
-Routing, Email Sending) and Google Gmail for the destination inbox. All site
-assets are self-hosted. Turnstile is the only third-party browser resource, and it
-loads only after form interaction. No analytics or tracking requests.
+Routing, Email Sending), Google Gmail for the destination inbox, and the existing
+first-party-operated CFLab Analytics service. Site code is self-hosted. Turnstile
+is the only third-party script/frame and loads only after form interaction. The
+analytics client is self-hosted and sends to the exact collector origin; no
+remote analytics script or advertising tracker is allowed.
 Development: Wrangler, Playwright, axe, html-validate, sharp (asset preparation),
 and yaml (release-policy regression checks).
 Cloudflare authentication stays in local Wrangler state or an Actions secret; the

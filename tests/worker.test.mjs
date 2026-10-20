@@ -72,6 +72,8 @@ test('HTML is protected with security headers, a working Turnstile policy and no
   assert.match(csp, /form-action 'none'/);
   assert.match(csp, /frame-ancestors 'none'/);
   assert.match(csp, /script-src 'self' https:\/\/challenges\.cloudflare\.com/);
+  assert.match(csp, /connect-src 'self' https:\/\/challenges\.cloudflare\.com https:\/\/analytics\.aismallbizguru\.com/);
+  assert.doesNotMatch(csp, /script-src[^;]*analytics\.aismallbizguru\.com/);
   assert.match(csp, /frame-src https:\/\/challenges\.cloudflare\.com/);
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
   assert.match(response.headers.get('strict-transport-security'), /31536000/);

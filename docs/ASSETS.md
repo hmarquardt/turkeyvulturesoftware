@@ -22,8 +22,10 @@ The site publishes only optimized derivatives, with no runtime image service.
 ## Other assets
 
 The flight mark, favicon, and service SVGs are original project code, not copied
-from an icon pack. Typography uses locally installed Arial/Helvetica and Georgia
-fallbacks; no font files are distributed and no font service is contacted.
+from an icon pack. `public/assets/analytics.js` is original project code; it uses
+no third-party analytics SDK, font file, or remote executable asset. Typography
+uses locally installed Arial/Helvetica and Georgia fallbacks; no font files are
+distributed and no font service is contacted.
 
 ## Licensing policy
 

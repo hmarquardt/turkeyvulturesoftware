@@ -66,6 +66,7 @@ if (typeof document !== 'undefined') {
   let turnstileToken = '';
   let turnstileLoading = false;
   let submitting = false;
+  let submissionTracked = false;
 
   if (form) {
     const selected = new URL(location.href).searchParams.get('service');
@@ -202,6 +203,12 @@ if (typeof document !== 'undefined') {
         const result = await response.json().catch(() => ({}));
 
         if (response.ok && result.ok) {
+          // Count only an accepted inquiry, once, and never any form contents.
+          if (!submissionTracked) {
+            submissionTracked = true;
+            const category = form.dataset.kind === 'project' ? value.service : '';
+            window.turkeyVultureAnalytics?.intakeSubmitted(form.dataset.kind, category);
+          }
           form.hidden = true;
           reference.textContent = result.id;
           success.hidden = false;

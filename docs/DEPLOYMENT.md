@@ -112,7 +112,36 @@ does not derive a production host and rewrite redirects into a local loop.
   authorization and must be recorded and reconciled with Git afterward.
 
 HTML uses `Cache-Control: no-transform` to prevent automatic analytics injection.
-This is response-scoped; unrelated account/zone settings are untouched.
+This is response-scoped; unrelated account/zone settings are untouched. The
+explicit self-hosted analytics client is separate and may connect only to the
+registered CFLab Analytics collector through the CSP `connect-src` entry.
+
+## CFLab Analytics Site (existing service)
+
+This repository does not deploy CFLab Analytics and adds no analytics binding. The
+Site is a row in the existing `cflab-analytics` D1 database, managed by the normal
+CFLab Analytics `POST /api/sites` API or dashboard when a global admin session is
+available:
+
+| Field | Value |
+| --- | --- |
+| Name / slug | Turkey Vulture Software / `turkeyvulturesoftware` |
+| Public ID | `as_5wh58kbCgGxaRewfGznoaC` |
+| Primary / alias | `turkeyvulturesoftware.com` / `www.turkeyvulturesoftware.com` |
+| Privacy / retention | UTC, active, DNT and GPC on, 90 raw days |
+
+The row was provisioned through read-only-checked, additive operator access to the
+existing database because no browser admin session was available, matching the
+documented Fruiting Forecast precedent. It matches the API-created shape; there is
+no schema change, new dashboard, new Worker, or CFLab code change. The client is
+self-hosted at `public/assets/analytics.js`; the public Site ID is configuration,
+not a credential. Read-only verification:
+
+```sh
+cd ~/aismallbizguru-cflab
+npx wrangler d1 execute cflab-analytics --remote --config wrangler.analytics.jsonc \
+  --command "SELECT s.public_id, s.slug, s.name, s.timezone, s.active, s.respect_dnt, s.respect_gpc, s.raw_retention_days, d.hostname, d.kind FROM analytics_sites s JOIN analytics_domains d ON d.site_id=s.id WHERE s.slug='turkeyvulturesoftware' ORDER BY d.kind;"
+```
 
 ## Email and form resources
 

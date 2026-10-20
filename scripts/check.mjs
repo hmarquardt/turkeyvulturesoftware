@@ -3,6 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { HtmlValidate } from 'html-validate';
 import { pages, layout, origin, contactEmail, hankEmail, turnstileSiteKey } from '../src/pages.mjs';
 const validator = new HtmlValidate({ extends: ['html-validate:recommended'], rules: { 'no-trailing-whitespace': 'off', 'long-title': 'off', 'svg-focusable': 'off' } });
+const analytics = await readFile('public/assets/analytics.js', 'utf8');
 for (const page of pages) {
   const html = layout(page);
   const report = await validator.validateString(html);
@@ -39,4 +40,14 @@ assert.deepEqual(config.ratelimits, [{
 const required = ['README.md', 'AGENTS.md', 'docs/BRAND.md', 'docs/ARCHITECTURE.md', 'docs/DEPLOYMENT.md', 'docs/ROADMAP.md', 'docs/ASSETS.md', '.gitignore'];
 for (const file of required) assert.ok((await readFile(file, 'utf8')).trim().length > 100, `Missing documentation: ${file}`);
 for (const name of await readdir('public')) assert.ok(!name.startsWith('.') && !/secret|credential|\.env/.test(name));
+for (const page of pages) assert.match(layout(page), /<script src="\/assets\/analytics\.js" defer><\/script>/, `${page.path} must load the analytics client`);
+assert.match(analytics, /var SITE_ID = 'as_5wh58kbCgGxaRewfGznoaC';/);
+assert.match(analytics, /var ENDPOINT = 'https:\/\/analytics\.aismallbizguru\.com\/collect';/);
+assert.match(analytics, /ALLOWED_HOSTS = \['turkeyvulturesoftware\.com', 'www\.turkeyvulturesoftware\.com'\]/);
+assert.match(analytics, /'contact_cta_click'/);
+assert.match(analytics, /'intake_submit'/);
+assert.match(analytics, /'pageview'/);
+assert.doesNotMatch(analytics, /localStorage|document\.cookie|sendBeacon/, 'Analytics must keep its session in sessionStorage only');
+assert.doesNotMatch(analytics, /getElementById|querySelector|FormData/, 'Analytics must never read page or form values');
+assert.doesNotMatch(analytics, /google-analytics|googletagmanager|facebook\.net|doubleclick/i);
 console.log('HTML, links, assets, documentation and deployment target checks passed.');

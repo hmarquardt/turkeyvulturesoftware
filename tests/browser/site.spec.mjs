@@ -4,14 +4,19 @@ import AxeBuilder from '@axe-core/playwright';
 const paths = ['/', '/how-we-build', '/site-autopsy', '/contact', '/privacy', '/not-a-real-page'];
 const screenshotNames = { '/': 'home', '/site-autopsy': 'autopsy', '/how-we-build': 'how-we-build' };
 const screenshotWidths = path => path === '/how-we-build' ? [320, 390, 768, 1440] : [390, 1440];
+const collector = new URL('https://analytics.aismallbizguru.com/collect');
 for (const width of [320, 390, 768, 1440]) {
   for (const path of paths) {
-    test(`${path} renders accessibly at ${width}px without overflow or external assets`, async ({ page, baseURL }) => {
+    test(`${path} renders accessibly at ${width}px without overflow or unapproved external assets`, async ({ page, baseURL }) => {
       await page.setViewportSize({ width, height: 900 });
       const failures = [], external = [], errors = [];
+      const origin = new URL(baseURL).origin;
       page.on('pageerror', e => errors.push(e.message));
       page.on('response', r => { if (r.status() >= 400 && r.url() !== `${baseURL}${path}`) failures.push(r.url()); });
-      page.on('request', r => { if (new URL(r.url()).origin !== new URL(baseURL).origin) external.push(r.url()); });
+      page.on('request', r => {
+        const url = new URL(r.url());
+        if (url.origin !== origin && !(url.origin === collector.origin && url.pathname === collector.pathname)) external.push(r.url());
+      });
       const response = await page.goto(path);
       expect(response.status()).toBe(path === '/not-a-real-page' ? 404 : 200);
       await expect(page.locator('h1')).toHaveCount(1);
@@ -165,6 +170,8 @@ test('metadata, sitemap, security headers, 404 and reduced motion', async ({ pag
   const headers = await response.allHeaders();
   expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
   expect(headers['content-security-policy']).toContain('https://challenges.cloudflare.com');
+  expect(headers['content-security-policy']).toContain('connect-src \'self\' https://challenges.cloudflare.com https://analytics.aismallbizguru.com');
+  expect(headers['content-security-policy']).not.toMatch(/script-src[^;]*analytics\.aismallbizguru\.com/);
   expect(headers['cache-control']).toContain('no-transform');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');

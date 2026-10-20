@@ -15,6 +15,23 @@ mail relay, or submission history. Show success only after Cloudflare Email Serv
 accepts the message. Preserve the direct email and no-JavaScript fallbacks, and keep
 submitted contents out of logs, analytics, and browser storage.
 
+Analytics is the existing CFLab Analytics service, not new infrastructure. Turkey
+Vulture is Site `as_5wh58kbCgGxaRewfGznoaC`; its client is self-hosted at
+`public/assets/analytics.js` and posts only to
+`https://analytics.aismallbizguru.com/collect`. Keep the public Site ID in sync with
+the registered primary (`turkeyvulturesoftware.com`) and alias
+(`www.turkeyvulturesoftware.com`) domains. Allowed events are `pageview`,
+`contact_cta_click` (`destination` plus a fixed `placement`), and `intake_submit`
+(`kind` plus the controlled project `category`) only after confirmed form success.
+Never add a remote executable analytics script, cookies, persistent identifiers,
+localStorage, fingerprinting, form fields, reference IDs, Turnstile tokens,
+arbitrary query strings, a second analytics service, or an analytics Worker/D1
+binding. DNT and GPC stay authoritative. Analytics remains inert on localhost,
+tests without an explicit controlled opt-in, and workers.dev. Extend CSP only in
+`connect-src` for the exact collector, and keep the browser network allowlist
+limited to local assets plus that collector. Update tests and docs with any event
+or privacy contract change.
+
 ## Engineering
 
 Use semantic HTML, visible focus, explicit labels, and progressively enhanced

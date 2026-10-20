@@ -4,6 +4,7 @@
 
 Editorial homepage; four service areas; AI-forward engineering positioning; clear
 project process; a client-ownership and technology-stack guide at `/how-we-build`;
+privacy-conscious, cookie-free analytics through the existing CFLab Analytics Site;
 Site Autopsy and project requests through a protected Worker form;
 Cloudflare Email Routing and Email Sending delivery; privacy and useful
 404; responsive/reduced-motion navigation; self-hosted original imagery; metadata,
@@ -32,9 +33,9 @@ Never imply a security certification or scan private/authenticated content.
 
 ## Conversion and service development
 
-With a privacy decision and explicit owner approval, measure actual funnel steps:
-CTA choice, intake starts, form submission, and qualified leads. Never
-collect form contents in analytics. Optimize against real outcomes, not vanity
-traffic. Consider permission-based case studies from real delivered work, service
-examples with honest labels, and more specific automation/data offers once useful.
-No invented client history or performance figures.
+Use the existing privacy-conscious analytics to understand actual funnel steps:
+page interest, CTA choice, and accepted intake. Form contents remain outside
+analytics, and DNT/GPC remain authoritative. Optimize against real outcomes, not
+vanity traffic. Consider permission-based case studies from real delivered work,
+service examples with honest labels, and more specific automation/data offers once
+useful. No invented client history or performance figures.

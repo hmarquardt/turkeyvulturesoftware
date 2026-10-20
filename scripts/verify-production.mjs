@@ -20,22 +20,30 @@ for (let attempt = 0; attempt < 8; attempt++) {
 }
 assert.equal(actual, expected, 'Production must serve the committed release.');
 assert.equal(await readPublicRevision(TARGET.workerSite), expected, 'Known Worker endpoint must serve the same committed release.');
-for (const path of ['/', '/how-we-build', '/contact', '/site-autopsy', '/privacy', '/robots.txt', '/sitemap.xml', '/assets/social.jpg', '/assets/vulture-640.webp']) {
+for (const path of ['/', '/how-we-build', '/contact', '/site-autopsy', '/privacy', '/robots.txt', '/sitemap.xml', '/assets/social.jpg', '/assets/vulture-640.webp', '/assets/analytics.js']) {
   const response = await get(path);
   assert.equal(response.status, 200, `${path} status`);
   assert.match(response.headers.get('content-security-policy') || '', /frame-ancestors 'none'/);
+  assert.match(response.headers.get('content-security-policy') || '', /connect-src 'self' https:\/\/challenges\.cloudflare\.com https:\/\/analytics\.aismallbizguru\.com/);
+  assert.ok(!/script-src[^;]*analytics\.aismallbizguru\.com/.test(response.headers.get('content-security-policy') || ''));
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
   assert.ok(response.headers.get('strict-transport-security'));
   if (path === '/') {
     const html = await response.text();
     assert.match(html, /stinks like/);
     assert.doesNotMatch(html, /static\.cloudflareinsights\.com|data-cf-beacon/);
+    assert.match(html, /<script src="\/assets\/analytics\.js" defer><\/script>/);
     assert.match(response.headers.get('cache-control'), /no-transform/);
     assert.match(html, /https:\/\/turkeyvulturesoftware.com\//);
   } else if (path === '/how-we-build') {
     const html = await response.text();
     assert.match(html, /Your software\./);
     assert.match(html, /<link rel="canonical" href="https:\/\/turkeyvulturesoftware.com\/how-we-build">/);
+  } else if (path === '/assets/analytics.js') {
+    const script = await response.text();
+    assert.match(script, /as_5wh58kbCgGxaRewfGznoaC/);
+    assert.match(script, /https:\/\/analytics\.aismallbizguru\.com\/collect/);
+    assert.doesNotMatch(script, /localStorage|document\.cookie|sendBeacon/);
   } else await response.body?.cancel();
 }
 const missing = await get('/release-verification-missing-page');
