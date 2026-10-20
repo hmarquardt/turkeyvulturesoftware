@@ -51,6 +51,7 @@ the historical bootstrap, and rollback.
 ## What ships
 
 - Homepage with all four service areas, approach, process, and conversion paths.
+- `/how-we-build`: the ownership-first stack, AI-assisted engineering approach, pragmatic technology rules, and five-step onboarding guide.
 - `/site-autopsy`: request a human website review through the protected form.
 - `/contact`: project intake with service selection and the same protected form.
 - `/privacy`, useful 404, metadata, social card, robots, sitemap, version endpoint.

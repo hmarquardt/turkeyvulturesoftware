@@ -3,7 +3,8 @@
 ## v1
 
 Editorial homepage; four service areas; AI-forward engineering positioning; clear
-project process; Site Autopsy and project requests through a protected Worker form;
+project process; a client-ownership and technology-stack guide at `/how-we-build`;
+Site Autopsy and project requests through a protected Worker form;
 Cloudflare Email Routing and Email Sending delivery; privacy and useful
 404; responsive/reduced-motion navigation; self-hosted original imagery; metadata,
 social card, robots, sitemap, revision endpoint; secure Cloudflare Worker; tested

@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-const paths = ['/', '/site-autopsy', '/contact', '/privacy', '/not-a-real-page'];
+const paths = ['/', '/how-we-build', '/site-autopsy', '/contact', '/privacy', '/not-a-real-page'];
+const screenshotNames = { '/': 'home', '/site-autopsy': 'autopsy', '/how-we-build': 'how-we-build' };
+const screenshotWidths = path => path === '/how-we-build' ? [320, 390, 768, 1440] : [390, 1440];
 for (const width of [320, 390, 768, 1440]) {
   for (const path of paths) {
     test(`${path} renders accessibly at ${width}px without overflow or external assets`, async ({ page, baseURL }) => {
@@ -19,10 +21,24 @@ for (const width of [320, 390, 768, 1440]) {
       const a11y = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
       expect(a11y.violations).toEqual([]);
       expect(failures).toEqual([]); expect(external).toEqual([]); expect(errors).toEqual([]);
-      if (['/', '/site-autopsy'].includes(path) && [390, 1440].includes(width)) await page.screenshot({ path: `test-results/${path === '/' ? 'home' : 'autopsy'}-${width}.png`, fullPage: true });
+      if (screenshotNames[path] && screenshotWidths(path).includes(width)) await page.screenshot({ path: `test-results/${screenshotNames[path]}-${width}.png`, fullPage: true });
     });
   }
 }
+
+test('how we build is discoverable, canonical, and routes to contact', async ({ page }) => {
+  await page.goto('/how-we-build');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://turkeyvulturesoftware.com/how-we-build');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Your software.');
+  await expect(page.getByRole('heading', { name: /A short stack/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'How we build', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'Let’s Build Something' }).first()).toHaveAttribute('href', '/contact');
+  const sitemap = await (await page.request.get('/sitemap.xml')).text();
+  expect(sitemap).toContain('<loc>https://turkeyvulturesoftware.com/how-we-build</loc>');
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'How we build', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /How we build — and why you keep the keys/ })).toHaveAttribute('href', '/how-we-build');
+});
 
 test('mobile menu works with keyboard and Escape; anchor CTA reaches services', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -30,6 +46,7 @@ test('mobile menu works with keyboard and Escape; anchor CTA reaches services', 
   const menu = page.getByRole('button', { name: 'Menu' });
   await menu.focus(); await page.keyboard.press('Enter');
   await expect(menu).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('link', { name: 'How we build', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(menu).toHaveAttribute('aria-expanded', 'false');
   await expect(menu).toBeFocused();
@@ -55,6 +72,15 @@ async function fillAutopsy(page) {
   await page.getByRole('textbox', { name: 'Your email (required)', exact: true }).fill('alex@example.com');
   await page.getByLabel('Website URL').fill('https://example.com');
 }
+
+test('mobile navigation remains usable at 320px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await expect(page.getByRole('link', { name: 'How we build', exact: true })).toBeVisible();
+  const dimensions = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: innerWidth }));
+  expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.viewport);
+});
 
 test('site autopsy submits to the protected endpoint and shows success only after acceptance', async ({ page }) => {
   await stubTurnstile(page);

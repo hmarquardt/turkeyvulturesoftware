@@ -15,6 +15,12 @@ clear process/ownership → start a conversation. Website rescue is the entry po
 not the limit of the business. Give custom software, automation, and data/cloud
 systems equal standing. Cost-conscious does not mean cheap.
 
+`/how-we-build` carries the ownership-first argument in detail: client-owned
+accounts, a small Cloudflare/GitHub stack, optional OpenRouter access for
+applications that need AI, pragmatic exceptions for existing systems, and the
+onboarding sequence. Keep provider choices as defaults, not requirements. Explain
+AI-assisted engineering separately from AI features in a client application.
+
 ## Voice
 
 Confident, capable, dryly funny, and approachable. The broken website or process

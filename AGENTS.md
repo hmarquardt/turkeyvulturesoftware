@@ -22,6 +22,9 @@ navigation. Respect reduced motion. Keep all runtime assets self-hosted. New pag
 paths must be included in the build and sitemap. Use the existing design tokens.
 Maintain useful mobile layouts down to 320px. Follow `docs/BRAND.md` for copy and
 claims: no fabricated experience details, testimonials, clients, or performance.
+Keep `/how-we-build` aligned with actual practice: client-owned accounts, technology
+choices as pragmatic defaults rather than requirements, and OpenRouter optional.
+Do not imply universal provider portability or a mandatory AI subscription.
 
 Run `npm run check`, `npm run build`, `npm test`, and a Wrangler dry-run before
 shipping functional changes. Browser tests cover 320, 390, 768, and 1440px with axe.

@@ -13,6 +13,10 @@ page list. `scripts/build.mjs` publishes only `public/` and those rendered pages
 into `dist/`. It also emits a sitemap and `version.json` with the Git revision.
 The raw checkout, docs, tests, and configuration are never uploaded as assets.
 
+Public pages are the homepage, `/how-we-build` (ownership and stack), `/site-autopsy`,
+`/contact`, `/privacy`, and the noindex 404. New content paths must be added to the
+known page list so the build and sitemap include them.
+
 ## Runtime request flow
 
 1. Worker-first routing executes for every request, including assets.
