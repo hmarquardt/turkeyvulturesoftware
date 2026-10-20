@@ -28,6 +28,17 @@ async function main() {
     payload = await cloudflareRequest(`/accounts/${config.account_id}/workers/scripts/${config.name}/domains/changeset?replace_state=true`, { token, method: 'POST', body: origins });
   } catch (error) {
     console.error(`Changeset preflight: ${error.message}`);
+    console.log('Credential presentation checks (no values):', JSON.stringify({
+      outerWhitespace: token !== token.trim(),
+      includesBearerPrefix: /^Bearer\s/i.test(token.trim()),
+      surroundedByQuotes: /^(["']).*\1$/.test(token.trim()),
+      looksLikeTokenId: /^[a-f0-9]{32}$/i.test(token.trim()),
+      scannableAccountToken: token.startsWith('cfat_'),
+    }));
+    try {
+      await cloudflareRequest(`/accounts/${config.account_id}/workers/scripts/${config.name}/settings`, { token });
+      console.log('Worker-specific metadata read: authenticated successfully.');
+    } catch (workerError) { console.error(`Worker-specific metadata read: ${workerError.message}`); }
     // Diagnostic only: a successful lookup does not bypass the current safety gate.
     const query = new URLSearchParams({ service: config.name, zone_id: routes[0].zone_id });
     try {
