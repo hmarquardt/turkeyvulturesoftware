@@ -25,11 +25,16 @@ git push origin main
 
 1. **Validate:** `npm ci`, `npm run check` (HTML, links, targets, Node tests),
    `npm run build`, Wrangler dry-run, and Playwright/axe browser tests.
-2. **Deploy:** only on main and only after the validation job succeeds
-   (`needs: validate`). Check out that same commit, install dependencies, require
-   the Actions secret, rebuild, refuse conflicting domain/DNS changes, and deploy
-   only the existing `turkey-vulture-software` Worker with implicit provisioning
-   disabled. The Cloudflare version is tagged with the Git SHA and workflow run.
+2. **Deploy:** only on main and after validation succeeds (`needs: validate`).
+   Check out that same commit, install dependencies, require the Actions secret,
+   rebuild, and read the existing domain inventory. Each exact apex/www binding
+   must belong to this Worker and zone in production, with known enabled and
+   preview states. Save its identity as runner-local metadata. Upload an inactive
+   version with `wrangler versions upload --no-x-provision`, extract its exact
+   UUID, recheck unchanged bindings, then activate only that UUID at 100% with
+   `wrangler versions deploy`. Check bindings again afterward. Neither command
+   publishes triggers, custom-domain changes or DNS. The version is tagged with
+   the Git SHA and workflow run. No resources are created or recreated.
 3. **Verify:** check production HTTPS, pages/assets, security headers, 404 handling,
    the www redirect with path/query, and `/version.json` against `GITHUB_SHA`.
    A successful upload alone is not a successful release.
@@ -48,8 +53,12 @@ attempts deployment after validation; missing credentials fail visibly.
 
 Set the repository Actions secret **`CLOUDFLARE_API_TOKEN`** to the existing stable
 Cloudflare deployment token for account `b1aa310aa0a1638d72b8b086a21e557c`.
-It needs Workers Scripts Edit and Workers Routes Edit for this account and zone.
-The account and zone IDs in `wrangler.json` are non-secret configuration.
+The dedicated account-owned token remains least-privilege: **Editor on the
+individual `turkey-vulture-software` Worker**, plus **Workers Routes Write on
+`turkeyvulturesoftware.com`**. Do not broaden, replace or rotate it to fix API
+request errors. The account and zone IDs in `wrangler.json` are public configuration.
+Store the token's secret value, not its token ID, in the Actions secret. New
+account tokens use Cloudflare's `cfat_` scannable format; see [account API tokens](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/).
 
 [Repository Actions secrets](https://github.com/hmarquardt/turkeyvulturesoftware/settings/secrets/actions)
 are the credential source. A stable credential can be installed with `gh secret set
@@ -69,7 +78,7 @@ npm ci
 npm run dev
 # Or run all quality gates without publishing:
 npm run test:all
-npx wrangler deploy --dry-run
+npx wrangler versions upload --dry-run --no-x-provision
 # Read-only verification of a committed production revision:
 EXPECTED_COMMIT=$(git rev-parse HEAD) npm run verify:production
 ```
@@ -82,12 +91,28 @@ use `uncommitted`.
 
 ## Domain, DNS, HTTPS
 
-Use exact Worker Custom Domain bindings for the apex and `www`; Cloudflare
-provisions DNS and TLS for those hostnames. The Worker redirects `www` permanently
+The exact apex and `www` Worker Custom Domain bindings already exist. Their
+Cloudflare-managed DNS and TLS are retained by normal releases. The Worker redirects `www` permanently
 (308) to HTTPS apex and preserves the path/query. No wildcard route is allowed.
 Inspect current records before replacing conflicts; never force domain attachment
-or replace unrelated DNS. Custom-domain provisioning must fail safely if an
-existing conflicting record is present.
+or replace unrelated DNS. Normal releases use only the documented read-only
+[Worker Domains API](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/)
+with a Worker filter. They require exactly the expected two bindings, correct
+Worker/zone/environment ownership, unique record IDs, enabled production routing,
+and disabled preview routing. API errors, missing fields, duplicates, foreign or
+unexpected domains, and incomplete results fail closed. IDs and routing states
+must match the saved snapshot before and after activation.
+
+The release does not use the legacy changeset endpoint or regular `wrangler deploy`.
+Pinned Wrangler 4.151.1 normally posts an array of origins to
+`/accounts/{account}/workers/scripts/{worker}/domains/changeset?replace_state=true`
+and expects `added`, `updated`, `removed`, and `conflicting` arrays. That request
+shape was correct, but the old validator hid provider authentication errors and
+accepted incomplete entries. More importantly, noninteractive publishing can
+set `override_existing_origin` and `override_existing_dns_record` to true.
+[Version-only deployment](https://developers.cloudflare.com/workers/versions-and-deployments/deployment-management/)
+keeps trigger changes outside routine releases. Inventory verification is the gate;
+there is no permission-error fallback that approves deployment.
 
 Initial access: Wrangler OAuth permits Worker/domain management but direct DNS
 record listing returns HTTP 403. Public NS queries match the active zone; initial
@@ -124,8 +149,9 @@ a local self-redirect. Keep this flag in both `npm run dev` and Playwright.
   zone status. Custom Domains can provision their exact hostnames separately.
 - Domain preflight failure: logs include sanitized Cloudflare error codes and
   messages, never credentials, authorization headers, or raw response bodies.
-  Invalid JSON and malformed schemas fail closed. A diagnostic read-only domain
-  lookup does not bypass the verification gate.
+  Invalid JSON and malformed schemas fail closed. Never bypass the ownership gate
+  after a permission or authentication failure; do not broaden token permissions
+  merely because the API returns an error.
 - Domain conflict: inspect it with an authorized owner; do not overwrite blindly.
 - TLS not yet active: inspect Custom Domain/certificate state and wait for issuance;
   do not claim HTTPS until a public request succeeds.
@@ -177,10 +203,29 @@ made local `npm run deploy` refuse publication, removed local OAuth fallback fro
 the credential preflight, and documented Git push as the canonical release path.
 Existing Cloudflare resources are retained unchanged.
 
-Credential discovery found no target-repository secret or available stable local
-deployment token. The local OAuth login returns HTTP 403 for token management.
-CI deployment verification remains blocked until the stable repository secret is
-installed. This is a credential blocker, not permission to deploy locally.
+At the time of the canonical-release correction, credential discovery found no
+target-repository secret or available stable local deployment token. The local
+OAuth login returned HTTP 403 for token management. That was a credential blocker,
+not permission to deploy locally. The dedicated secret has since been installed.
+
+### Custom Domain investigation
+
+The old preflight sent the same method, URL, JSON array and query as pinned
+Wrangler. Sanitized diagnostics in [run 39472333189](https://github.com/hmarquardt/turkeyvulturesoftware/actions/runs/39472333189)
+revealed **HTTP 400, Cloudflare code 9106: `Authentication failed (status: 400)`**.
+The documented read-only domain API failed identically. A separate
+[Worker-specific diagnostic](https://github.com/hmarquardt/turkeyvulturesoftware/actions/runs/39474140275)
+showed the same error reading this exact Worker's metadata. Safe format checks
+(no secret values logged) found a 32-character hexadecimal identifier-shaped
+secret, without whitespace, quotes or a Bearer wrapper. This indicates a token
+ID was stored instead of a recognized token secret; the error is authentication,
+not evidence of domain conflicts or a need for more permissions.
+
+The stored Actions secret needs the secret value of the **same existing token**;
+its Cloudflare resource scope and permissions must remain unchanged. No token or
+resource has been modified by this investigation. Once the existing credential
+value is corrected, an actual main push must pass both validation and deployment
+and match `/version.json` before CI delivery is declared verified.
 
 `/version.json` is the authoritative current deployed SHA; compare it to the
 actual main-push workflow's `headSha` and require both validate and deploy to pass.

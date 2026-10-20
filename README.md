@@ -15,7 +15,7 @@ npm run check               # HTML, links, deployment boundaries, Node tests
 npm run build               # explicit public assets + rendered HTML → dist/
 npx playwright install chromium
 npm test                    # responsive, accessibility and interaction browser tests
-npx wrangler deploy --dry-run
+npx wrangler versions upload --dry-run --no-x-provision
 ```
 
 `npm run test:all` checks, builds, and runs browser tests. The browser suite launches
@@ -30,7 +30,9 @@ Production domain: `turkeyvulturesoftware.com` (Cloudflare zone verified October
 **Git push is the production deployment trigger.** Push to `origin/main` (or merge
 a pull request) and GitHub Actions installs dependencies, checks HTML/links and
 routing, builds, runs browser/accessibility tests, deploys the validated commit
-to the existing Cloudflare Worker, and verifies the HTTPS revision. Failed
+to the existing Cloudflare Worker, and verifies the HTTPS revision. Releases
+verify domain ownership read-only, upload/activate a version, and compare domain
+bindings before and after activation; they never publish DNS or trigger changes. Failed
 validation prevents deployment. Pull requests validate without deploying.
 
 ```sh

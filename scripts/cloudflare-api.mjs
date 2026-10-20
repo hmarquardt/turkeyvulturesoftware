@@ -8,13 +8,12 @@ export class CloudflareApiError extends Error {
   }
 }
 
-export async function cloudflareRequest(path, { token, method = 'GET', body, fetcher = fetch }) {
+export async function cloudflareRequest(path, { token, fetcher = fetch }) {
   let response;
   try {
     response = await fetcher(`https://api.cloudflare.com/client/v4${path}`, {
-      method, redirect: 'error', signal: AbortSignal.timeout(20000),
-      headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      method: 'GET', redirect: 'error', signal: AbortSignal.timeout(20000),
+      headers: { Authorization: `Bearer ${token}` },
     });
   } catch {
     throw new Error('Cloudflare request failed or timed out; refusing deployment.');

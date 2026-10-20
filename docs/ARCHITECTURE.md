@@ -62,3 +62,17 @@ same page fields. Before activation: project-specific email configuration, recei
 verification, server-side validation, Turnstile verification, rate limiting,
 timeouts, sanitized logs, duplicate handling, and updated privacy information.
 No speculative persistence or scanner infrastructure is included in v1.
+
+## Release safety
+
+GitHub Actions checks the exact existing apex/www inventory through the documented
+`GET /accounts/{account}/workers/domains?service={worker}` API. Records must identify
+the expected Worker, zone, production environment and enabled/preview states.
+Malformed or incomplete inventories and authentication/permission failures block
+publication. A runner-local snapshot detects changes during the release.
+
+CI uploads an inactive Worker version and activates that exact version at 100%;
+it never deploys triggers or sends DNS/domain mutations. Wrangler's regular
+noninteractive deploy can set domain-overwrite flags, so it is excluded from the
+production job. Source routes describe the expected bindings, rather than asking
+normal releases to reprovision them. No new Cloudflare resources are introduced.

@@ -23,18 +23,22 @@ test('failed validation prevents deployment, and the full validation suite remai
   for (const command of ['npm ci', 'npm run check', 'npm run build', 'npm test']) {
     assert.ok(commands.includes(command), `Missing required validation: ${command}`);
   }
-  assert.ok(commands.some(command => /wrangler deploy .*--dry-run/.test(command)));
+  assert.ok(commands.some(command => /wrangler versions upload .*--dry-run/.test(command)));
 });
 
-test('CI publishes with an Actions secret and verifies that same committed revision', () => {
+test('CI uploads and activates only a version, with read-only ownership checks around activation', () => {
   const steps = workflow.jobs.deploy.steps;
-  const publish = steps.findIndex(step => /wrangler deploy/.test(step.run || ''));
+  const upload = steps.findIndex(step => /npx wrangler versions upload/.test(step.run || ''));
+  const activate = steps.findIndex(step => /npx wrangler versions deploy/.test(step.run || ''));
   const verification = steps.findIndex(step => step.run === 'npm run verify:production');
-  assert.ok(publish >= 0 && verification > publish);
-  assert.equal(steps[publish].env.CLOUDFLARE_API_TOKEN, '${{ secrets.CLOUDFLARE_API_TOKEN }}');
-  assert.match(steps[publish].run, /--no-x-provision/);
-  assert.ok(steps.slice(0, publish).some(step => step.run === 'node scripts/check-cloudflare-target.mjs'));
-  assert.ok(!steps.some(step => step.run === 'npm run deploy'));
+  assert.ok(upload >= 0 && activate > upload && verification > activate);
+  for (const index of [upload, activate]) assert.equal(steps[index].env.CLOUDFLARE_API_TOKEN, '${{ secrets.CLOUDFLARE_API_TOKEN }}');
+  assert.match(steps[upload].run, /--no-x-provision/);
+  assert.match(steps[activate].run, /VERSION_ID@100%/);
+  assert.ok(steps.slice(0, upload).some(step => /check-cloudflare-target.*--write-snapshot/.test(step.run || '')));
+  assert.ok(steps.slice(upload + 1, activate).some(step => /check-cloudflare-target.*--compare-snapshot/.test(step.run || '')));
+  assert.ok(steps.slice(activate + 1, verification).some(step => /check-cloudflare-target.*--compare-snapshot/.test(step.run || '')));
+  assert.ok(!steps.some(step => /wrangler (?:deploy|triggers)|npm run deploy/.test(step.run || '')));
   assert.ok(!workflow.jobs.validate.steps.some(step => step.env?.CLOUDFLARE_API_TOKEN));
 });
 

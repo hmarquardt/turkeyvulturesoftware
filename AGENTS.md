@@ -62,6 +62,13 @@ Missing credentials are a visible CI failure, never a reason to deploy locally.
 After deployment changes, push an actual commit and verify both the Actions
 validate/deploy jobs and production `/version.json` against that commit. Keep the
 existing Worker, domains, DNS and certificates; do not recreate them to change CI.
+Normal CI releases use `wrangler versions upload` and `wrangler versions deploy`
+only. Never run `wrangler deploy` or `wrangler triggers deploy` in the deploy job:
+noninteractive domain publishing can set overwrite flags. Keep the read-only
+Custom Domain inventory gate and its before/after snapshot comparisons. Missing,
+malformed, incomplete, disabled, foreign or changed bindings fail closed. Do not
+replace this ownership check with public DNS or an HTTP 200 check.
+
 Rollback normally means reverting the change and pushing through the same pipeline.
 
 Update README and affected docs when behavior, commands, architecture, brand,
