@@ -1,0 +1,34 @@
+# Machine and editor state
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+# Dependencies, output and caches
+node_modules/
+dist/
+build/
+.tmp/
+tmp/
+.cache/
+.wrangler/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+# Local configuration and credentials
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+!.env.example
+!.dev.vars.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+*.log

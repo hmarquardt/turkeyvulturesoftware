@@ -1,0 +1,25 @@
+{
+  "name": "turkey-vulture-software",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "npm run build && wrangler dev --ip 127.0.0.1 --port 8787",
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check.mjs && node --test tests/*.test.mjs",
+    "test": "playwright test",
+    "test:all": "npm run check && npm run build && npm test",
+    "deploy": "npm run build && node scripts/check-cloudflare-target.mjs && wrangler deploy --no-x-provision",
+    "verify:production": "node scripts/verify-production.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
+    "html-validate": "11.16.2",
+    "sharp": "0.35.5",
+    "wrangler": "4.151.1"
+  }
+}

@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import { readFile, readdir } from 'node:fs/promises';
+import { HtmlValidate } from 'html-validate';
+import { pages, layout, origin, contactEmail } from '../src/pages.mjs';
+const validator = new HtmlValidate({ extends: ['html-validate:recommended'], rules: { 'no-trailing-whitespace': 'off', 'long-title': 'off', 'svg-focusable': 'off' } });
+for (const page of pages) {
+  const html = layout(page);
+  const report = await validator.validateString(html);
+  assert.ok(report.valid, `${page.path}: ${JSON.stringify(report.results.flatMap(r => r.messages))}`);
+  for (const match of html.matchAll(/(?:href|src)="(\/[^"]*)"/g)) {
+    const url = new URL(match[1], origin);
+    if (url.pathname.startsWith('/assets/')) await readFile(`public${url.pathname}`);
+    else assert.ok(pages.some(p => p.path === url.pathname), `Broken link: ${match[1]}`);
+  }
+}
+assert.equal(contactEmail, 'hmarquardt@gmail.com');
+const config = JSON.parse(await readFile('wrangler.json', 'utf8'));
+assert.equal(config.name, 'turkey-vulture-software');
+assert.equal(config.account_id, 'b1aa310aa0a1638d72b8b086a21e557c');
+assert.equal(config.assets.directory, './dist');
+assert.equal(config.assets.run_worker_first, true);
+for (const route of config.routes || []) {
+  assert.ok(['turkeyvulturesoftware.com', 'www.turkeyvulturesoftware.com'].includes(route.pattern));
+  assert.equal(route.custom_domain, true);
+}
+assert.ok(!config.d1_databases && !config.kv_namespaces && !config.send_email);
+const required = ['README.md', 'AGENTS.md', 'docs/BRAND.md', 'docs/ARCHITECTURE.md', 'docs/DEPLOYMENT.md', 'docs/ROADMAP.md', 'docs/ASSETS.md', '.gitignore'];
+for (const file of required) assert.ok((await readFile(file, 'utf8')).trim().length > 100, `Missing documentation: ${file}`);
+for (const name of await readdir('public')) assert.ok(!name.startsWith('.') && !/secret|credential|\.env/.test(name));
+console.log('HTML, links, assets, documentation and deployment target checks passed.');
