@@ -29,7 +29,7 @@ ${page.noindex ? '<meta name="robots" content="noindex, follow">' : `<link rel="
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/site.css">
-${path === '/' ? '<link rel="preload" as="image" href="/assets/vulture-960.webp" imagesrcset="/assets/vulture-640.webp 640w, /assets/vulture-960.webp 960w, /assets/vulture-1440.webp 1440w" imagesizes="(max-width: 700px) 100vw, 50vw">' : ''}
+${path === '/' ? '<link rel="preload" as="image" href="/assets/vulture-960.webp" imagesrcset="/assets/vulture-640.webp 640w, /assets/vulture-960.webp 960w, /assets/vulture-1086.webp 1086w" imagesizes="(max-width: 700px) 100vw, 50vw">' : ''}
 <script src="/assets/site.js" defer></script>
 ${page.intake ? '<script src="/assets/intake.js" type="module"></script>' : ''}
 </head>
@@ -55,7 +55,7 @@ const home = {
 <p class="hero-description">We rescue websites, build custom software, and automate the work slowing you down. Experienced human engineering. Seriously capable AI.</p>
 <div class="hero-actions">${button('/site-autopsy', 'Request a Site Autopsy')}${button('/contact', 'Discuss a Project', true)}</div>
 <p class="hero-note">Independent software engineering. Less overhead. More possibility.</p></div>
-<figure class="hero-art"><picture><source type="image/webp" srcset="/assets/vulture-640.webp 640w, /assets/vulture-960.webp 960w, /assets/vulture-1440.webp 1440w" sizes="(max-width: 700px) 100vw, 50vw"><img src="/assets/vulture-960.webp" alt="A red-headed turkey vulture, wings spread in warm light, perched on a weathered branch." width="1086" height="1448" fetchpriority="high"></picture><span class="art-index" aria-hidden="true">TV / 001</span><figcaption><span>THE ORIGINAL PROBLEM SOLVER</span><span>Cathartes aura <span aria-hidden="true">↗</span></span></figcaption></figure>
+<figure class="hero-art"><picture><source type="image/webp" srcset="/assets/vulture-640.webp 640w, /assets/vulture-960.webp 960w, /assets/vulture-1086.webp 1086w" sizes="(max-width: 700px) 100vw, 50vw"><img src="/assets/vulture-960.webp" alt="A red-headed turkey vulture, wings spread in warm light, perched on a weathered branch." width="1086" height="1448" fetchpriority="high"></picture><span class="art-index" aria-hidden="true">TV / 001</span><figcaption><span>THE ORIGINAL PROBLEM SOLVER</span><span>Cathartes aura <span aria-hidden="true">↗</span></span></figcaption></figure>
 </section>
 <div class="capability-strip"><div class="shell"><span>WEBSITES THAT WORK</span><span aria-hidden="true">✳</span><span>SOFTWARE THAT FITS</span><span aria-hidden="true">✳</span><span>LESS BUSYWORK</span><span aria-hidden="true">✳</span><span>MORE LIFT</span></div></div>
 <section id="services" class="section shell" aria-labelledby="services-heading"><div class="section-intro"><p class="eyebrow dark-eyebrow">01 / WHAT WE DO</p><div><h2 id="services-heading">A little less chaos.<br>A lot more capability.</h2><p>A tired website might be the first symptom. We can help with the systems behind it, too.</p></div></div>

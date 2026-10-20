@@ -76,14 +76,21 @@ test('no-JavaScript visitors retain navigation and direct contact', async ({ bro
   await expect(page.getByRole('button', { name: 'Prepare email' })).toBeDisabled();
   await context.close();
 });
-test('metadata, sitemap, security headers, 404 and reduced motion', async ({ page, request }) => {
-  const response = await request.get('/');
-  expect(response.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
+test('metadata, sitemap, security headers, 404 and reduced motion', async ({ page }) => {
+  const response = await page.goto('/');
+  const headers = await response.allHeaders();
+  expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
+  expect(headers['cache-control']).toContain('no-transform');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://turkeyvulturesoftware.com/');
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe('auto');
-  expect((await request.get('/sitemap.xml')).status()).toBe(200);
-  expect(await (await request.get('/robots.txt')).text()).toContain('Sitemap: https://turkeyvulturesoftware.com');
-  expect((await request.post('/api/inquiries', { data: {} })).status()).toBe(405);
+  const endpoints = await page.evaluate(async () => ({
+    sitemap: (await fetch('/sitemap.xml')).status,
+    robots: await (await fetch('/robots.txt')).text(),
+    submission: (await fetch('/api/inquiries', { method: 'POST', body: '{}' })).status,
+  }));
+  expect(endpoints.sitemap).toBe(200);
+  expect(endpoints.robots).toContain('Sitemap: https://turkeyvulturesoftware.com');
+  expect(endpoints.submission).toBe(405);
 });

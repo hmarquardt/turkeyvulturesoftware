@@ -2,7 +2,7 @@
 
 ## Vulture hero
 
-`public/assets/vulture-{640,960,1440}.webp` are optimized versions of an original
+`public/assets/vulture-{640,960,1086}.webp` are optimized versions of an original
 AI-created image generated for Turkey Vulture Software on October 20, 2026 with
 the built-in imagegen tool. They depict a turkey vulture; they are not represented
 as a documentary wildlife photograph. The original tool output is retained in the

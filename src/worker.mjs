@@ -8,6 +8,10 @@ export function secure(response, url) {
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
   if (url.protocol === 'https:') headers.set('Strict-Transport-Security', 'max-age=31536000');
+  // Keep the delivered HTML intact: Cloudflare's auto-injected analytics is out of scope.
+  if ((headers.get('Content-Type') || '').includes('text/html')) {
+    headers.set('Cache-Control', `${headers.get('Cache-Control') || 'public, max-age=0, must-revalidate'}, no-transform`);
+  }
   if (url.pathname === '/version.json') headers.set('Cache-Control', 'no-store');
   if (url.hostname.endsWith('.workers.dev')) headers.set('X-Robots-Tag', 'noindex');
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });

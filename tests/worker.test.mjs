@@ -20,6 +20,7 @@ test('HTML is protected with security headers and forbids form submissions', asy
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
   assert.match(response.headers.get('strict-transport-security'), /31536000/);
   assert.ok(!response.headers.has('x-robots-tag'));
+  assert.match(response.headers.get('cache-control'), /no-transform/);
 });
 test('workers.dev is excluded from indexing', async () => {
   const response = await worker.fetch(new Request('https://turkey-vulture-software.hmarquardt.workers.dev/'), env);

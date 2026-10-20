@@ -11,5 +11,17 @@
     "binding": "ASSETS",
     "not_found_handling": "404-page",
     "run_worker_first": true
-  }
+  },
+  "routes": [
+    {
+      "pattern": "turkeyvulturesoftware.com",
+      "zone_id": "5b51c5134d58c24ed465a80afa21cfde",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.turkeyvulturesoftware.com",
+      "zone_id": "5b51c5134d58c24ed465a80afa21cfde",
+      "custom_domain": true
+    }
+  ]
 }

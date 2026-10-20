@@ -21,6 +21,8 @@ The raw checkout, docs, tests, and configuration are never uploaded as assets.
 4. Other methods receive 405; there is no online submission endpoint.
 5. Responses receive CSP, no-sniff, referrer/permissions policy, and HTTPS HSTS.
    Workers.dev responses are marked noindex. Version responses use no-store.
+   HTML responses add `Cache-Control: no-transform` to prevent automatic analytics
+   injection by Cloudflare. The browser suite rejects third-party requests.
 
 Worker-first keeps redirect/security behavior consistent. This trades a small
 Worker invocation cost for predictable routing. There is no SPA fallback.

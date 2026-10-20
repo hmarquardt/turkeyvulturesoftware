@@ -27,6 +27,8 @@ for (const path of ['/', '/contact', '/site-autopsy', '/privacy', '/robots.txt',
   if (path === '/') {
     const html = await response.text();
     assert.match(html, /stinks like/);
+    assert.doesNotMatch(html, /static\.cloudflareinsights\.com|data-cf-beacon/);
+    assert.match(response.headers.get('cache-control'), /no-transform/);
     assert.match(html, /https:\/\/turkeyvulturesoftware.com\//);
   } else await response.body?.cancel();
 }
