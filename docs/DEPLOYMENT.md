@@ -1,21 +1,22 @@
 # Deployment
 
-## Verified target
+## Target and credential
 
-- GitHub: `hmarquardt/turkeyvulturesoftware`; existing public repository, initially empty.
-- Branch: `main`; no existing remote history to overwrite.
+- Repository: `hmarquardt/turkeyvulturesoftware`, default branch `main`.
 - Worker: `turkey-vulture-software`.
 - Cloudflare account: `b1aa310aa0a1638d72b8b086a21e557c`.
-- Domain: `turkeyvulturesoftware.com`.
-- Zone: `5b51c5134d58c24ed465a80afa21cfde`, active full zone.
+- Zone: `5b51c5134d58c24ed465a80afa21cfde` (`turkeyvulturesoftware.com`).
+- Apex: https://turkeyvulturesoftware.com
+- Existing Worker URL: https://turkey-vulture-software.hmarquardt.workers.dev
 - Nameservers: `fattouche.ns.cloudflare.com`, `magnolia.ns.cloudflare.com`.
 
-Discovery date: October 20, 2026. A zone alone does not establish live hosting.
-See the release verification record below for actual deployment results.
+The repository Actions secret `CLOUDFLARE_API_TOKEN` contains the dedicated,
+account-owned token: **Individual Worker `turkey-vulture-software`: Editor** and
+**zone `turkeyvulturesoftware.com`: Workers Routes Write**. Keep this token and its
+scope unchanged. CI never uses a local developer login. IDs above are public
+configuration, not secrets. Never print token values or sensitive headers.
 
-## Canonical release process: Git push
-
-Push a reviewed commit to `origin/main`, or merge a pull request into main:
+## Canonical release: Git push
 
 ```sh
 git push origin main
@@ -23,209 +24,117 @@ git push origin main
 
 `.github/workflows/production.yml` automatically performs:
 
-1. **Validate:** `npm ci`, `npm run check` (HTML, links, targets, Node tests),
-   `npm run build`, Wrangler dry-run, and Playwright/axe browser tests.
-2. **Deploy:** only on main and after validation succeeds (`needs: validate`).
-   Check out that same commit, install dependencies, require the Actions secret,
-   rebuild, and read the existing domain inventory. Each exact apex/www binding
-   must belong to this Worker and zone in production, with known enabled and
-   preview states. Save its identity as runner-local metadata. Upload an inactive
-   version with `wrangler versions upload --no-x-provision`, extract its exact
-   UUID, recheck unchanged bindings, then activate only that UUID at 100% with
-   `wrangler versions deploy`. Check bindings again afterward. Neither command
-   publishes triggers, custom-domain changes or DNS. The version is tagged with
-   the Git SHA and workflow run. No resources are created or recreated.
-3. **Verify:** check production HTTPS, pages/assets, security headers, 404 handling,
-   the www redirect with path/query, and `/version.json` against `GITHUB_SHA`.
-   A successful upload alone is not a successful release.
+1. **Validate:** install the lockfile with Node 24, check HTML/links/targets and Node
+   tests, build, dry-run the version upload, and run Playwright/axe browser tests.
+2. **Preflight:** authenticate through the pinned Worker's settings GET API,
+   validate the expected ASSETS binding, and read its active deployment. Require
+   one valid version at 100%. Compare public apex/workers.dev revision identifiers
+   and check the exact www 308 redirect. Persist this baseline on the runner.
+3. **Upload:** `wrangler versions upload --no-x-provision`, tagged with the Git SHA.
+   Extract exactly one valid version UUID. This does not activate it or deploy
+   any route, domain, DNS or trigger configuration.
+4. **Before activation:** require the active deployment and public baseline to be
+   unchanged. Read the uploaded version through this Worker's API and require its
+   UUID and `workers/tag` to match the validated commit.
+5. **Activate:** `wrangler versions deploy <UUID>@100% --yes`. No trigger operation.
+6. **Verify:** require the Worker API to show that exact UUID serving 100%, with
+   the expected Git tag. Then verify public HTTPS at apex and workers.dev serves
+   `GITHUB_SHA`; check pages/assets, security headers, 404 and the www redirect
+   including path/query. HTTP 200 or a successful upload alone is insufficient.
 
-Pull requests run validation only. A failed validation job blocks the deployment
-job. Actions are pinned to commit SHAs, Node 24 and the lockfile are used, and main
-releases serialize without interrupting an in-progress deployment. This follows
-the existing AI Small Business Guru validate/deploy split and CFLab's explicit
-CI publishing and local-deploy refusal patterns. No second Cloudflare Git build
-integration or GitHub Pages deployment is used.
+`needs: validate` blocks deployment after any validation failure. PRs validate only.
+There is no opt-in variable that silently skips main deployment. Releases serialize;
+in-progress deployments are not cancelled. Actions are pinned to commit SHAs.
+No GitHub Pages or parallel Cloudflare Git build integration is used.
 
-No `CLOUDFLARE_DEPLOY_ENABLED` variable is required or consulted. Every main push
-attempts deployment after validation; missing credentials fail visibly.
+## Granular-token compatibility and safety
 
-## GitHub Actions credential
+The following read-only APIs explicitly support **Individual Workers Editor**:
 
-Set the repository Actions secret **`CLOUDFLARE_API_TOKEN`** to the existing stable
-Cloudflare deployment token for account `b1aa310aa0a1638d72b8b086a21e557c`.
-The dedicated account-owned token remains least-privilege: **Editor on the
-individual `turkey-vulture-software` Worker**, plus **Workers Routes Write on
-`turkeyvulturesoftware.com`**. Do not broaden, replace or rotate it to fix API
-request errors. The account and zone IDs in `wrangler.json` are public configuration.
-Store the token's secret value, not its token ID, in the Actions secret. New
-account tokens use Cloudflare's `cfat_` scannable format; see [account API tokens](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/).
+- [Worker settings](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/script_and_version_settings/methods/get/):
+  `GET /accounts/{account}/workers/scripts/{worker}/settings`.
+- [Worker deployments](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/list/):
+  `GET /accounts/{account}/workers/scripts/{worker}/deployments`.
+- [Worker version](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/get/):
+  `GET /accounts/{account}/workers/scripts/{worker}/versions/{UUID}`.
 
-[Repository Actions secrets](https://github.com/hmarquardt/turkeyvulturesoftware/settings/secrets/actions)
-are the credential source. A stable credential can be installed with `gh secret set
-CLOUDFLARE_API_TOKEN --repo hmarquardt/turkeyvulturesoftware` using secure stdin.
-Never put secret values in commands, logs, source, or docs. Do not copy a rotating
-Wrangler OAuth login into CI. GitHub does not reveal secret values from other
-repositories, so an existing secret cannot be retrieved through its API.
+The [account-wide domain list](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/)
+accepts legacy Workers Scripts Read/Write. A `service` filter does not convert
+that operation into a Worker-scoped authorization check. Do not request account-wide
+permissions merely to use it. The legacy changeset endpoint is also excluded.
 
-A missing/invalid token fails before production publication. Fix the repository
-secret and re-run the failed workflow or push the next reviewed commit. Do not
-fall back to a local production deploy. No developer login is needed by CI.
+Safety is structural: only version upload and version activation are used. There
+is no `wrangler deploy`, `wrangler triggers deploy`, domain mutation, DNS request,
+or account-wide discovery in the production job. Exact source targets are pinned,
+authenticated Worker metadata is validated, concurrent changes block activation,
+and live routing is verified against revision identifiers rather than HTTP 200.
+Malformed responses, unknown or split deployments, wrong uploaded identity/tag,
+permission failures, routing mismatches and missing snapshots all fail closed.
 
-## Local development and verification
+This protocol does not enumerate administrative domain ownership or claim to
+compare DNS records. It preserves them by never invoking their mutation paths.
+Explicit domain/infrastructure work must be handled separately; normal code
+releases must not add, remove, transfer, overwrite or reprovision existing routes.
+The known apex/www bindings, TLS and DNS remain in place. No resources are recreated.
+
+## Local development and read-only checks
 
 ```sh
 npm ci
 npm run dev
-# Or run all quality gates without publishing:
 npm run test:all
 npx wrangler versions upload --dry-run --no-x-provision
-# Read-only verification of a committed production revision:
 EXPECTED_COMMIT=$(git rev-parse HEAD) npm run verify:production
 ```
 
-`npm run deploy` deliberately exits with an explanation and publishes nothing,
-matching CFLab. Local `wrangler deploy` is not a release mechanism. Wrangler's
-local runtime and dry-run are development tools only. `version.json` contains
-`GITHUB_SHA` in Actions and HEAD during local builds; uncommitted initial previews
-use `uncommitted`.
+`npm run deploy` deliberately refuses publication, following CFLab. Local Wrangler
+is for preview/dry-run, not releases. Preview uses `--host localhost` so Wrangler
+does not derive a production host and rewrite redirects into a local loop.
+`dist/version.json` records `GITHUB_SHA` in Actions, HEAD for local builds, and
+`uncommitted` for the original pre-commit preview.
 
-## Domain, DNS, HTTPS
+## Operations
 
-The exact apex and `www` Worker Custom Domain bindings already exist. Their
-Cloudflare-managed DNS and TLS are retained by normal releases. The Worker redirects `www` permanently
-(308) to HTTPS apex and preserves the path/query. No wildcard route is allowed.
-Inspect current records before replacing conflicts; never force domain attachment
-or replace unrelated DNS. Normal releases use only the documented read-only
-[Worker Domains API](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/)
-with a Worker filter. They require exactly the expected two bindings, correct
-Worker/zone/environment ownership, unique record IDs, enabled production routing,
-and disabled preview routing. API errors, missing fields, duplicates, foreign or
-unexpected domains, and incomplete results fail closed. IDs and routing states
-must match the saved snapshot before and after activation.
+- **403 / code 10000:** inspect the failed endpoint and its accepted permission
+  types. An account-wide endpoint may reject a valid granular credential. Confirm
+  authentication at the Worker settings endpoint before diagnosing the secret.
+- **400 / code 9106:** token not recognized. Check secure credential presentation;
+  a token ID is not its secret value. Never print it or fall back to local OAuth.
+- **Concurrent change:** inspect the active deployment and public revisions. Do
+  not overwrite a changed baseline to force activation; start a fresh reviewed run.
+- **Wrong UUID/tag:** inspect the upload log and Git SHA; never activate a guessed
+  or previously uploaded version. Logs report sanitized provider codes/messages.
+- **Public revision mismatch:** inspect the active deployment, assets and domain
+  routing. Do not declare the release successful until the exact commit is served.
+- **Rollback:** revert the bad change and push through the same pipeline. Never
+  force-push/reset main. A direct Cloudflare recovery operation needs explicit
+  authorization and must be recorded and reconciled with Git afterward.
 
-The release does not use the legacy changeset endpoint or regular `wrangler deploy`.
-Pinned Wrangler 4.151.1 normally posts an array of origins to
-`/accounts/{account}/workers/scripts/{worker}/domains/changeset?replace_state=true`
-and expects `added`, `updated`, `removed`, and `conflicting` arrays. That request
-shape was correct, but the old validator hid provider authentication errors and
-accepted incomplete entries. More importantly, noninteractive publishing can
-set `override_existing_origin` and `override_existing_dns_record` to true.
-[Version-only deployment](https://developers.cloudflare.com/workers/versions-and-deployments/deployment-management/)
-keeps trigger changes outside routine releases. Inventory verification is the gate;
-there is no permission-error fallback that approves deployment.
+HTML uses `Cache-Control: no-transform` to prevent automatic analytics injection.
+This is response-scoped; unrelated account/zone settings are untouched.
 
-Initial access: Wrangler OAuth permits Worker/domain management but direct DNS
-record listing returns HTTP 403. Public NS queries match the active zone; initial
-A, www CNAME, and MX lookups returned no answers. Email Routing is unconfigured.
-The exact apex and www Custom Domains were subsequently attached with both DNS-record and Worker-origin override flags false, after a Cloudflare changeset confirmed no conflicts or removals. Cloudflare manages their generated DNS records. No email configuration or unrelated DNS was changed.
+Email intake remains browser-side draft preparation. No SMTP/API delivery, mailbox,
+Turnstile widget or storage is provisioned by deployment. Those are separate work.
 
-HTML responses include `Cache-Control: no-transform` to prevent Cloudflare's
-automatic Web Analytics beacon injection. This is response-scoped, not an account
-or unrelated-zone setting change. See the [Cloudflare Web Analytics FAQ](https://developers.cloudflare.com/web-analytics/faq/).
-Direct Web Analytics management is not available to the current OAuth credential
-(HTTP 403); the response-header policy requires no broader credential.
+## History and compatibility findings
 
-## Email and outstanding setup
+The initial two deployments on October 20, 2026 were manual bootstrap operations,
+using a local OAuth login while Actions validated but skipped deployment. Initial
+commit: `ffc3558e8c62305cd626be7b16ab9ba7731dd7eb`; hardened bootstrap revision:
+`f8c9856674a0aa76b253bfdd3dea5e718c68499f`. They are historical setup, not the normal
+release process. The first created the Worker; exact apex/www bindings were then
+attached only after a conflict-free changeset, with overwrite flags disabled.
 
-Email-first intake is functional and explicitly prepares a draft for the visitor
-to send. The recipient is the owner’s existing public email. There is no SMTP/API
-send path, storage, or production submission endpoint.
+The first diagnostic failures were **400 / 9106**, including a Worker-specific
+metadata read, with an ID-shaped value stored in Actions. That credential
+presentation issue was distinct from the later granular compatibility failure.
 
-Before introducing online submission: configure a project mailbox and verified
-sender/recipient, establish delivery and reply handling, verify receipt end to end,
-add a project-specific Turnstile widget/`TURNSTILE_SECRET` and a rate-limit binding,
-validate server-side, and update the privacy page. Never reuse another project’s
-sender, widget, endpoint, database, or resource namespace. No email test message
-was sent as part of v1 setup.
+[Run 39475119140, attempt 2](https://github.com/hmarquardt/turkeyvulturesoftware/actions/runs/39475119140/attempts/2)
+failed with **403 / 10000, `Authentication error`**, at
+`GET /accounts/{account}/workers/domains?service=turkey-vulture-software`.
+The account-wide domain gate was incompatible with the dedicated granular token.
+The correction uses the supported Worker-specific reads and version-only safety
+protocol above; no broader token permissions are required or requested.
 
-## Troubleshooting and rollback
-
-Local preview explicitly uses `--host localhost`. Without it, Wrangler can derive
-the production host from Custom Domains and rewrite an apex HTTPS redirect into
-a local self-redirect. Keep this flag in both `npm run dev` and Playwright.
-
-- Wrangler account mismatch: stop; inspect `wrangler whoami` and the target config.
-- DNS API 403: the local OAuth lacks direct DNS scope; don’t infer DNS access from
-  zone status. Custom Domains can provision their exact hostnames separately.
-- Domain preflight failure: logs include sanitized Cloudflare error codes and
-  messages, never credentials, authorization headers, or raw response bodies.
-  Invalid JSON and malformed schemas fail closed. Never bypass the ownership gate
-  after a permission or authentication failure; do not broaden token permissions
-  merely because the API returns an error.
-- Domain conflict: inspect it with an authorized owner; do not overwrite blindly.
-- TLS not yet active: inspect Custom Domain/certificate state and wait for issuance;
-  do not claim HTTPS until a public request succeeds.
-- CI deployment fails at the secret check: install the stable repository secret;
-  the workflow never silently skips main deployment because a variable is unset.
-- CI revision mismatch: inspect the deploy log, domain binding, and `/version.json`;
-  do not accept HTTP 200 alone as release verification.
-- Email app doesn’t open: copy the prepared message into webmail; nothing was sent.
-
-For rollback, revert the bad change in Git and push to main so the same pipeline
-validates, deploys, and verifies the revert. Never reset or force-push main.
-A direct Cloudflare rollback is an exceptional operator recovery action requiring
-explicit authorization; record it and reconcile Git afterward. Do not use it for
-normal releases.
-
-## Release verification record
-
-### Historical manual bootstrap — October 20, 2026
-
-Both previous production deployments were **manual**, using the local Wrangler
-OAuth login. Actions validated the commits but skipped the deploy job because
-its opt-in variable was unset and no Actions deployment secret was available.
-The first created the Worker; the second retained the verified domain bindings
-and added production hardening. These were initial setup actions, not a successful
-CI/CD release, and must not be repeated as the normal release process.
-
-Historical evidence:
-
-- Initial commit: `ffc3558e8c62305cd626be7b16ab9ba7731dd7eb`, pushed to origin/main.
-- First Worker version: `e532d2c1-b0be-4cb8-89fa-1e60dd4ed308`.
-- Worker URL: https://turkey-vulture-software.hmarquardt.workers.dev
-- Apex: https://turkeyvulturesoftware.com
-- Apex and www Custom Domains attached without overriding records or bindings.
-- Authoritative DNS, Cloudflare 1.1.1.1, and Google 8.8.8.8 resolve both hostnames.
-- HTTPS certificate validation, all public pages/assets, headers, 404, version,
-  and www 308 with path/query passed the production verification script.
-- The local machine cached pre-provisioning NXDOMAIN. Verification used a
-  process-local public DNS resolver; no OS DNS settings were changed.
-- [Initial Actions validation](https://github.com/hmarquardt/turkeyvulturesoftware/actions/runs/39459406398)
-  passed: HTML/links/target checks, 12 Node tests, dry-run, 25 browser tests.
-- Automatic deploy was intentionally skipped: stable token absent, gate disabled.
-- No brand-domain mailbox or delivery engine was enabled; email draft/copy intake
-  uses the owner's existing public contact address, not a fabricated mailbox.
-
-### GitHub Actions release correction
-
-Removed the silent opt-in gate, retained validation as a required dependency,
-made local `npm run deploy` refuse publication, removed local OAuth fallback from
-the credential preflight, and documented Git push as the canonical release path.
-Existing Cloudflare resources are retained unchanged.
-
-At the time of the canonical-release correction, credential discovery found no
-target-repository secret or available stable local deployment token. The local
-OAuth login returned HTTP 403 for token management. That was a credential blocker,
-not permission to deploy locally. The dedicated secret has since been installed.
-
-### Custom Domain investigation
-
-The old preflight sent the same method, URL, JSON array and query as pinned
-Wrangler. Sanitized diagnostics in [run 39472333189](https://github.com/hmarquardt/turkeyvulturesoftware/actions/runs/39472333189)
-revealed **HTTP 400, Cloudflare code 9106: `Authentication failed (status: 400)`**.
-The documented read-only domain API failed identically. A separate
-[Worker-specific diagnostic](https://github.com/hmarquardt/turkeyvulturesoftware/actions/runs/39474140275)
-showed the same error reading this exact Worker's metadata. Safe format checks
-(no secret values logged) found a 32-character hexadecimal identifier-shaped
-secret, without whitespace, quotes or a Bearer wrapper. This indicates a token
-ID was stored instead of a recognized token secret; the error is authentication,
-not evidence of domain conflicts or a need for more permissions.
-
-The stored Actions secret needs the secret value of the **same existing token**;
-its Cloudflare resource scope and permissions must remain unchanged. No token or
-resource has been modified by this investigation. Once the existing credential
-value is corrected, an actual main push must pass both validation and deployment
-and match `/version.json` before CI delivery is declared verified.
-
-`/version.json` is the authoritative current deployed SHA; compare it to the
-actual main-push workflow's `headSha` and require both validate and deploy to pass.
+A release is verified only when both Actions jobs pass and production's revision
+matches that workflow's `headSha`.

@@ -64,10 +64,18 @@ validate/deploy jobs and production `/version.json` against that commit. Keep th
 existing Worker, domains, DNS and certificates; do not recreate them to change CI.
 Normal CI releases use `wrangler versions upload` and `wrangler versions deploy`
 only. Never run `wrangler deploy` or `wrangler triggers deploy` in the deploy job:
-noninteractive domain publishing can set overwrite flags. Keep the read-only
-Custom Domain inventory gate and its before/after snapshot comparisons. Missing,
-malformed, incomplete, disabled, foreign or changed bindings fail closed. Do not
-replace this ownership check with public DNS or an HTTP 200 check.
+noninteractive domain publishing can set overwrite flags. Authenticate only the
+pinned Worker through granular-compatible settings/deployment/version GET APIs.
+Snapshot its active deployment and public revision baseline; block activation if
+these change during upload, or the uploaded UUID/Git SHA tag is wrong. Confirm
+100% activation through the Worker API and verify the exact revision over HTTPS.
+
+Do not call the account-wide `/workers/domains` inventory endpoint: its legacy
+permissions are incompatible with Individual Workers Editor even with a service
+filter. Preserve the existing token and do not widen permissions to make inventory
+calls work. DNS/trigger safety comes from never invoking a mutation path; public
+revision and redirect checks verify live routing, not administrative ownership.
+Do not claim DNS records or a binding inventory were enumerated by this protocol.
 
 Rollback normally means reverting the change and pushing through the same pipeline.
 

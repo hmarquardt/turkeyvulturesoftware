@@ -26,7 +26,7 @@ test('failed validation prevents deployment, and the full validation suite remai
   assert.ok(commands.some(command => /wrangler versions upload .*--dry-run/.test(command)));
 });
 
-test('CI uploads and activates only a version, with read-only ownership checks around activation', () => {
+test('CI uploads and activates only a version, with granular Worker checks around activation', () => {
   const steps = workflow.jobs.deploy.steps;
   const upload = steps.findIndex(step => /npx wrangler versions upload/.test(step.run || ''));
   const activate = steps.findIndex(step => /npx wrangler versions deploy/.test(step.run || ''));
@@ -37,7 +37,7 @@ test('CI uploads and activates only a version, with read-only ownership checks a
   assert.match(steps[activate].run, /VERSION_ID@100%/);
   assert.ok(steps.slice(0, upload).some(step => /check-cloudflare-target.*--write-snapshot/.test(step.run || '')));
   assert.ok(steps.slice(upload + 1, activate).some(step => /check-cloudflare-target.*--compare-snapshot/.test(step.run || '')));
-  assert.ok(steps.slice(activate + 1, verification).some(step => /check-cloudflare-target.*--compare-snapshot/.test(step.run || '')));
+  assert.ok(steps.slice(activate + 1, verification).some(step => /check-cloudflare-target.*--expect-version/.test(step.run || '')));
   assert.ok(!steps.some(step => /wrangler (?:deploy|triggers)|npm run deploy/.test(step.run || '')));
   assert.ok(!workflow.jobs.validate.steps.some(step => step.env?.CLOUDFLARE_API_TOKEN));
 });

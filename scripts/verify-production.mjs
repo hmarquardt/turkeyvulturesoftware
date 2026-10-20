@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { setTimeout } from 'node:timers/promises';
+import { TARGET, readPublicRevision } from './check-cloudflare-target.mjs';
 const site = process.env.SITE_URL || 'https://turkeyvulturesoftware.com';
 const expected = process.env.EXPECTED_COMMIT || process.env.GITHUB_SHA;
 assert.ok(expected && /^[a-f0-9]{40}$/.test(expected), 'Set EXPECTED_COMMIT or GITHUB_SHA to a full committed revision.');
@@ -13,11 +14,12 @@ for (let attempt = 0; attempt < 8; attempt++) {
     const revision = await get(`/version.json?revision=${expected}`, { headers: { 'Cache-Control': 'no-cache' } });
     assert.equal(revision.status, 200);
     actual = (await revision.json()).commit;
-    if (actual === expected) break;
+    if (actual === expected && await readPublicRevision(TARGET.workerSite) === expected) break;
   } catch (error) { if (attempt === 7) throw error; }
   if (attempt < 7) await setTimeout(5000);
 }
 assert.equal(actual, expected, 'Production must serve the committed release.');
+assert.equal(await readPublicRevision(TARGET.workerSite), expected, 'Known Worker endpoint must serve the same committed release.');
 for (const path of ['/', '/contact', '/site-autopsy', '/privacy', '/robots.txt', '/sitemap.xml', '/assets/social.jpg', '/assets/vulture-640.webp']) {
   const response = await get(path);
   assert.equal(response.status, 200, `${path} status`);

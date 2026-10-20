@@ -65,14 +65,21 @@ No speculative persistence or scanner infrastructure is included in v1.
 
 ## Release safety
 
-GitHub Actions checks the exact existing apex/www inventory through the documented
-`GET /accounts/{account}/workers/domains?service={worker}` API. Records must identify
-the expected Worker, zone, production environment and enabled/preview states.
-Malformed or incomplete inventories and authentication/permission failures block
-publication. A runner-local snapshot detects changes during the release.
+GitHub Actions uses only Worker-specific settings/deployment/version GET APIs,
+which explicitly support Individual Workers Editor. The account-wide domain
+inventory API requires legacy permissions and is not used. No extra account
+permissions or application resources are needed.
 
-CI uploads an inactive Worker version and activates that exact version at 100%;
-it never deploys triggers or sends DNS/domain mutations. Wrangler's regular
-noninteractive deploy can set domain-overwrite flags, so it is excluded from the
-production job. Source routes describe the expected bindings, rather than asking
-normal releases to reprovision them. No new Cloudflare resources are introduced.
+The gate pins the account, Worker and source trigger declarations. It authenticates
+Worker settings, validates the existing ASSETS binding and a single active version
+at 100%, and snapshots deployment identity plus matching apex/workers.dev public
+revisions and the www redirect. Any metadata/permission/routing failure blocks
+publication. Before activation, the baseline must remain unchanged and the exact
+uploaded UUID must carry the validated Git SHA tag. After activation the Worker
+API must identify that UUID at 100%; public HTTPS checks require the same Git SHA
+at both known Worker and apex URLs, plus assets, headers, 404 and www behavior.
+
+Only `wrangler versions upload` and `wrangler versions deploy` can publish. Neither
+updates routes, domains, DNS or triggers. Their immutability replaces incompatible
+account-wide inventory comparisons; it does not claim administrative enumeration
+of DNS or bindings. Such infrastructure changes require a separate explicit task.

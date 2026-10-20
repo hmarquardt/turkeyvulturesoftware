@@ -1,87 +1,86 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { TARGET, validateDomains, validateTarget, verifyRemoteDomains, compareDomains } from '../scripts/check-cloudflare-target.mjs';
+import { TARGET, validateTarget, validateWorkerSettings, validateDeployment, verifyRemoteWorker, verifyUploadedVersion, readPublicRevision, verifyPublicBaseline, compareWorkerSnapshot } from '../scripts/check-cloudflare-target.mjs';
 import { readUploadVersion } from '../scripts/read-upload-version.mjs';
 const config = JSON.parse(readFileSync('wrangler.json', 'utf8'));
-const record = (hostname, id) => ({ id, hostname, service: TARGET.worker, zone_id: TARGET.zone, zone_name: TARGET.zoneName, environment: 'production', enabled: true, previews_enabled: false });
-const inventory = () => ({ success: true, result: [record(TARGET.hostnames[0], 'a'.repeat(40)), record(TARGET.hostnames[1], 'b'.repeat(40))], result_info: { page: 1, total_pages: 1, count: 2, total_count: 2 } });
+const deploymentId = '12345678-1234-1234-1234-123456789abc';
+const versionId = 'dc580544-84b8-457f-92bb-674a9936ce9a';
+const commit = 'a'.repeat(40);
+const settings = () => ({ success: true, result: { bindings: [{ type: 'assets', name: 'ASSETS' }] } });
+const deployment = () => ({ success: true, result: { deployments: [{ id: deploymentId, strategy: 'percentage', versions: [{ version_id: versionId, percentage: 100 }] }] } });
 
-test('read-only verification confirms both production domains with one authenticated GET', async () => {
+test('granular authentication and deployment checks use only Worker-specific GET endpoints', async () => {
   const calls = [];
-  const actual = await verifyRemoteDomains(config, { token: 'test-credential', fetcher: async (url, options) => {
-    calls.push({ url, options }); return Response.json(inventory());
+  const actual = await verifyRemoteWorker(config, { token: 'test-credential', fetcher: async (url, options) => {
+    calls.push({ url, options }); return Response.json(url.endsWith('/settings') ? settings() : deployment());
   } });
-  assert.equal(actual.length, 2);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, `https://api.cloudflare.com/client/v4/accounts/${TARGET.account}/workers/domains?service=turkey-vulture-software`);
-  assert.equal(calls[0].options.method, 'GET');
-  assert.equal(calls[0].options.body, undefined);
-  assert.equal(calls[0].options.redirect, 'error');
-  assert.equal(calls[0].options.headers.Authorization, 'Bearer test-credential');
+  assert.deepEqual(actual, { deploymentId, versionId });
+  assert.deepEqual(calls.map(call => call.url), ['settings', 'deployments'].map(path => `https://api.cloudflare.com/client/v4/accounts/${TARGET.account}/workers/scripts/${TARGET.worker}/${path}`));
+  for (const { options } of calls) {
+    assert.equal(options.method, 'GET'); assert.equal(options.body, undefined);
+    assert.equal(options.redirect, 'error'); assert.equal(options.headers.Authorization, 'Bearer test-credential');
+  }
 });
 
-test('only the pinned Worker, account, zone and exact two source domains are permitted', () => {
+test('only the pinned account, Worker and exact trigger declaration are permitted', () => {
   assert.doesNotThrow(() => validateTarget(config));
-  for (const mutation of [
-    value => { value.name = 'unrelated-worker'; },
-    value => { value.account_id = 'wrong-account'; },
-    value => { value.routes = []; },
-    value => { value.routes[0].zone_id = 'wrong-zone'; },
-    value => { value.routes[0].pattern = 'unrelated.example'; },
-    value => { value.routes[0].enabled = false; },
-  ]) {
-    const changed = structuredClone(config); mutation(changed);
-    assert.throws(() => validateTarget(changed));
+  for (const mutation of [value => { value.name = 'unrelated-worker'; }, value => { value.account_id = 'wrong'; }, value => { value.routes = []; }, value => { value.routes[0].zone_id = 'wrong'; }, value => { value.routes[0].pattern = 'wrong.example'; }, value => { value.routes[0].enabled = false; }]) {
+    const changed = structuredClone(config); mutation(changed); assert.throws(() => validateTarget(changed));
   }
 });
 
-test('malformed responses and incomplete inventories fail closed', () => {
-  for (const payload of [null, {}, { success: false }, { success: true, result: {} }, { success: true, result: [] }, { ...inventory(), result_info: [] }, { ...inventory(), result_info: { total_count: 3 } }, { ...inventory(), result_info: { total_pages: 2 } }, { ...inventory(), result_info: { count: '2' } }]) {
-    assert.throws(() => validateDomains(payload));
-  }
-  const noPagination = inventory(); delete noPagination.result_info;
-  assert.equal(validateDomains(noPagination).length, 2);
+test('malformed Worker metadata and unexpected bindings fail closed', () => {
+  for (const payload of [null, {}, { success: false }, { success: true, result: {} }, { success: true, result: { bindings: [] } }, { success: true, result: { bindings: [{ type: 'assets', name: 'WRONG' }] } }, { success: true, result: { bindings: [{ type: 'secret_text', name: 'SECRET' }] } }]) assert.throws(() => validateWorkerSettings(payload));
 });
 
-test('actual ownership conflicts and ambiguous states prevent publication', () => {
-  for (const [field, value] of [
-    ['service', 'another-worker'], ['zone_id', 'another-zone'], ['zone_name', 'another.example'],
-    ['environment', 'staging'], ['environment', undefined], ['enabled', false], ['enabled', undefined],
-    ['previews_enabled', true], ['previews_enabled', undefined], ['id', undefined], ['id', 'not-a-binding-id'],
-    ['hostname', 'other.example'],
-  ]) {
-    const payload = inventory(); payload.result[0][field] = value;
-    assert.throws(() => validateDomains(payload), `Must reject ${field}: ${value}`);
+test('missing, malformed, split or partial active deployments prevent publication', () => {
+  for (const payload of [null, {}, { success: true, result: [] }, { success: true, result: { deployments: [] } }]) assert.throws(() => validateDeployment(payload));
+  for (const mutate of [value => { value.id = 'invalid'; }, value => { value.strategy = 'unknown'; }, value => { value.versions = []; }, value => { value.versions.push(value.versions[0]); }, value => { value.versions[0].percentage = 50; }, value => { value.versions[0].version_id = 'invalid'; }]) {
+    const payload = deployment(); mutate(payload.result.deployments[0]); assert.throws(() => validateDeployment(payload));
   }
-  const duplicate = inventory(); duplicate.result[1] = duplicate.result[0];
-  assert.throws(() => validateDomains(duplicate), /duplicate|unexpected/i);
-  const sharedId = inventory(); sharedId.result[1].id = sharedId.result[0].id;
-  assert.throws(() => validateDomains(sharedId), /Duplicate/);
-  const extra = inventory(); extra.result.push(record('extra.example', 'c'.repeat(40))); delete extra.result_info;
-  assert.throws(() => validateDomains(extra), /unexpected/i);
 });
 
-test('permission and authentication failures never authorize a fallback or write', async () => {
-  for (const [status, code, message] of [[400, 9106, 'Authentication failed (status: 400)'], [401, 10000, 'Authentication error'], [403, 9109, 'Unauthorized to access requested resource']]) {
+test('permission or authentication errors stop without account-wide fallback', async () => {
+  for (const [status, code] of [[400, 9106], [401, 10000], [403, 10000]]) {
     const calls = [];
-    await assert.rejects(verifyRemoteDomains(config, { token: 'test-credential', fetcher: async (url, options) => {
-      calls.push(options.method); return Response.json({ success: false, errors: [{ code, message }] }, { status });
-    } }), error => { assert.ok(error.message.includes(`code ${code}: ${message}`)); return true; });
-    assert.deepEqual(calls, ['GET']);
+    await assert.rejects(verifyRemoteWorker(config, { token: 'test-credential', fetcher: async (url, options) => {
+      calls.push({ url, method: options.method }); return Response.json({ success: false, errors: [{ code, message: 'Authentication error' }] }, { status });
+    } }), new RegExp(`HTTP ${status}: code ${code}`));
+    assert.equal(calls.length, 1); assert.ok(calls[0].url.endsWith('/settings')); assert.equal(calls[0].method, 'GET');
   }
 });
 
-test('domain snapshots detect binding replacement between upload and activation', () => {
-  const before = validateDomains(inventory());
-  assert.doesNotThrow(() => compareDomains(before, validateDomains(inventory())));
-  const replaced = inventory(); replaced.result[0].id = 'c'.repeat(40);
-  assert.throws(() => compareDomains(before, validateDomains(replaced)), /changed during/);
-  assert.throws(() => compareDomains({}, before), /Malformed/);
+test('concurrent deployment or public revision changes block activation', () => {
+  const before = { deploymentId, versionId, publicCommit: commit };
+  assert.doesNotThrow(() => compareWorkerSnapshot(before, { ...before }));
+  for (const change of [{ deploymentId: versionId }, { versionId: deploymentId }, { publicCommit: 'b'.repeat(40) }]) assert.throws(() => compareWorkerSnapshot(before, { ...before, ...change }), /changed during/);
+  assert.throws(() => compareWorkerSnapshot({}, before), /Malformed/);
+});
+
+test('uploaded version must have the exact UUID and validated Git SHA tag', async () => {
+  for (const result of [{ id: versionId, annotations: { 'workers/tag': commit } }, { id: deploymentId, annotations: { 'workers/tag': commit } }, { id: versionId }, { id: versionId, annotations: { 'workers/tag': 'b'.repeat(40) } }]) {
+    const operation = verifyUploadedVersion(versionId, commit, { token: 'test', fetcher: async url => { assert.ok(url.endsWith(`/versions/${versionId}`)); return Response.json({ success: true, result }); } });
+    if (result.id === versionId && result.annotations?.['workers/tag'] === commit) await operation;
+    else await assert.rejects(operation);
+  }
+  await assert.rejects(verifyUploadedVersion('invalid', commit, {}));
+});
+
+test('public routing baseline requires matching Worker/apex revisions and exact www redirect; no bearer is forwarded', async () => {
+  const fetcher = async (url, options) => {
+    assert.ok(!options.headers?.Authorization);
+    if (url.startsWith('https://www.')) return new Response(null, { status: 308, headers: { location: `${TARGET.site}/contact?service=data` } });
+    return Response.json({ commit });
+  };
+  assert.equal(await verifyPublicBaseline({ fetcher }), commit);
+  await assert.rejects(verifyPublicBaseline({ fetcher: async url => Response.json({ commit: url.startsWith(TARGET.workerSite) ? commit : 'b'.repeat(40) }) }), /different revisions/);
+  await assert.rejects(verifyPublicBaseline({ fetcher: async url => url.startsWith('https://www.') ? new Response(null, { status: 200 }) : Response.json({ commit }) }), /www routing/);
+  await assert.rejects(readPublicRevision(TARGET.site, { fetcher: async () => Response.json({ commit: 'invalid' }) }), /Malformed/);
+  await assert.rejects(readPublicRevision(TARGET.site, { fetcher: async () => new Response(null, { status: 302 }) }), /unavailable or redirected/);
 });
 
 test('activation requires one exact version ID from a successful upload', () => {
-  const id = 'dc580544-84b8-457f-92bb-674a9936ce9a';
-  assert.equal(readUploadVersion(`Uploaded worker\nWorker Version ID: ${id}\n`), id);
-  for (const output of ['', 'Version ID: invalid', `Version ID: ${id}\nVersion ID: ${id}`, `Version ID: ${id}-unexpected`]) assert.throws(() => readUploadVersion(output));
+  assert.equal(readUploadVersion(`Worker Version ID: ${versionId}\n`), versionId);
+  for (const output of ['', 'Version ID: invalid', `Version ID: ${versionId}\nVersion ID: ${versionId}`, `Version ID: ${versionId}-unexpected`]) assert.throws(() => readUploadVersion(output));
 });

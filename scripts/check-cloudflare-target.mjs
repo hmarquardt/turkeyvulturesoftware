@@ -9,6 +9,8 @@ export const TARGET = Object.freeze({
   zone: '5b51c5134d58c24ed465a80afa21cfde',
   zoneName: 'turkeyvulturesoftware.com',
   hostnames: ['turkeyvulturesoftware.com', 'www.turkeyvulturesoftware.com'],
+  site: 'https://turkeyvulturesoftware.com',
+  workerSite: 'https://turkey-vulture-software.hmarquardt.workers.dev',
 });
 
 export function validateTarget(config) {
@@ -23,60 +25,96 @@ export function validateTarget(config) {
   }
 }
 
-export function validateDomains(payload) {
-  assert.ok(payload?.success === true && Array.isArray(payload.result), 'Malformed Cloudflare domain response; refusing deployment.');
-  const domains = payload.result;
-  const info = payload.result_info;
-  // This documented API is single-page. Reject evidence of incomplete results.
-  if (info !== undefined) {
-    assert.ok(info && typeof info === 'object' && !Array.isArray(info), 'Malformed domain pagination metadata.');
-    for (const key of ['count', 'total_count']) {
-      if (info[key] !== undefined) assert.equal(info[key], domains.length, 'Incomplete domain inventory; refusing deployment.');
-    }
-    for (const key of ['page', 'total_pages']) {
-      if (info[key] !== undefined) assert.equal(info[key], 1, 'Incomplete domain inventory; refusing deployment.');
-    }
-  }
-  assert.equal(domains.length, TARGET.hostnames.length, 'Missing or unexpected Custom Domain bindings.');
-  assert.deepEqual(domains.map(domain => domain?.hostname).sort(), [...TARGET.hostnames].sort(), 'Missing, duplicate or unexpected Custom Domain bindings.');
-  const ids = new Set();
-  return domains.map(domain => {
-    assert.ok(typeof domain.id === 'string' && /^[a-f0-9]{32,40}$/.test(domain.id), 'Missing or malformed domain binding identity.');
-    assert.ok(!ids.has(domain.id), 'Duplicate domain binding identities.');
-    ids.add(domain.id);
-    assert.equal(domain.service, TARGET.worker, 'Domain is bound to another Worker; refusing deployment.');
-    assert.equal(domain.zone_id, TARGET.zone, 'Domain belongs to another zone; refusing deployment.');
-    assert.equal(domain.zone_name, TARGET.zoneName, 'Unexpected domain zone name.');
-    assert.equal(domain.environment, 'production', 'Domain is not bound to the production environment.');
-    assert.equal(domain.enabled, true, 'Production domain is disabled or its state is unknown.');
-    assert.equal(domain.previews_enabled, false, 'Unexpected or unknown preview routing configuration.');
-    const { id, hostname, service, zone_id, zone_name, environment, enabled, previews_enabled } = domain;
-    return { id, hostname, service, zone_id, zone_name, environment, enabled, previews_enabled };
-  }).sort((a, b) => a.hostname.localeCompare(b.hostname));
+export const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+export const SHA = /^[a-f0-9]{40}$/;
+
+export function validateWorkerSettings(payload) {
+  assert.ok(payload?.success === true && Array.isArray(payload.result?.bindings), 'Malformed Worker settings; refusing deployment.');
+  const bindings = payload.result.bindings;
+  assert.ok(bindings.length === 1 && bindings[0]?.type === 'assets' && bindings[0]?.name === 'ASSETS', 'Unexpected Worker bindings; refusing deployment.');
 }
 
-export async function verifyRemoteDomains(config, { token, fetcher } = {}) {
+export function validateDeployment(payload) {
+  assert.ok(payload?.success === true && Array.isArray(payload.result?.deployments), 'Malformed Worker deployment response.');
+  // Cloudflare documents the first entry as the deployment actively serving traffic.
+  const deployment = payload.result.deployments[0];
+  assert.ok(deployment && UUID.test(deployment.id), 'Missing or malformed active deployment.');
+  assert.ok(deployment.strategy === 'percentage' && Array.isArray(deployment.versions) && deployment.versions.length === 1, 'Unexpected or split Worker deployment; refusing activation.');
+  const version = deployment.versions[0];
+  assert.ok(UUID.test(version?.version_id) && version.percentage === 100, 'Expected one active Worker version at 100%.');
+  return { deploymentId: deployment.id, versionId: version.version_id };
+}
+
+export async function verifyRemoteWorker(config, { token, fetcher, log = () => {} } = {}) {
   validateTarget(config);
   assert.ok(token, 'Missing stable CLOUDFLARE_API_TOKEN Actions secret; refusing deployment. Local Wrangler OAuth is not a release credential.');
-  const query = new URLSearchParams({ service: TARGET.worker });
-  const payload = await cloudflareRequest(`/accounts/${TARGET.account}/workers/domains?${query}`, { token, fetcher });
-  return validateDomains(payload);
+  const base = `/accounts/${TARGET.account}/workers/scripts/${TARGET.worker}`;
+  validateWorkerSettings(await cloudflareRequest(`${base}/settings`, { token, fetcher }));
+  log('Authenticated the pinned Worker via GET /settings (supports Individual Workers Editor).');
+  return validateDeployment(await cloudflareRequest(`${base}/deployments`, { token, fetcher }));
 }
 
-export function compareDomains(expected, actual) {
-  // Revalidate the persisted metadata as well as the live API response.
-  validateDomains({ success: true, result: expected });
-  assert.deepEqual(actual, expected, 'Custom Domain bindings changed during the release; refusing activation.');
+export async function verifyUploadedVersion(versionId, expectedCommit, { token, fetcher } = {}) {
+  assert.ok(UUID.test(versionId) && SHA.test(expectedCommit), 'Expected an exact uploaded version UUID and full Git SHA.');
+  const payload = await cloudflareRequest(`/accounts/${TARGET.account}/workers/scripts/${TARGET.worker}/versions/${versionId}`, { token, fetcher });
+  assert.ok(payload?.success === true && payload.result?.id === versionId, 'Uploaded version identity mismatch.');
+  assert.equal(payload.result.annotations?.['workers/tag'], expectedCommit, 'Uploaded version does not belong to the validated Git commit.');
+}
+
+export async function readPublicRevision(origin, { fetcher = fetch } = {}) {
+  assert.ok([TARGET.site, TARGET.workerSite].includes(origin), 'Unexpected production verification host.');
+  const response = await fetcher(`${origin}/version.json?release-check=${Date.now()}`, {
+    method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(20000),
+    headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+  });
+  assert.equal(response.status, 200, 'Production revision endpoint is unavailable or redirected.');
+  const body = await response.json();
+  assert.ok(SHA.test(body?.commit), 'Malformed production revision.');
+  return body.commit;
+}
+
+export async function verifyPublicBaseline({ fetcher = fetch } = {}) {
+  const workerCommit = await readPublicRevision(TARGET.workerSite, { fetcher });
+  const apexCommit = await readPublicRevision(TARGET.site, { fetcher });
+  assert.equal(apexCommit, workerCommit, 'Apex and known Worker endpoint serve different revisions; refusing release.');
+  const www = await fetcher(`https://${TARGET.hostnames[1]}/contact?service=data`, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
+  assert.equal(www.status, 308, 'Unexpected www routing; refusing release.');
+  assert.equal(www.headers.get('location'), `${TARGET.site}/contact?service=data`, 'Unexpected www redirect destination.');
+  return workerCommit;
+}
+
+export function compareWorkerSnapshot(expected, actual) {
+  assert.ok(expected && UUID.test(expected.deploymentId) && UUID.test(expected.versionId) && SHA.test(expected.publicCommit), 'Malformed release baseline snapshot.');
+  assert.deepEqual(actual, expected, 'Active Worker deployment or public routing changed during upload; refusing activation.');
 }
 
 async function main() {
+  const args = process.argv.slice(2);
+  const options = new Map();
+  for (let i = 0; i < args.length; i += 2) {
+    assert.ok(['--write-snapshot', '--compare-snapshot', '--uploaded-version', '--expect-version'].includes(args[i]) && args[i + 1] && !options.has(args[i]), 'Unsupported release verification arguments.');
+    options.set(args[i], args[i + 1]);
+  }
+  const token = process.env.CLOUDFLARE_API_TOKEN;
   const config = JSON.parse(await readFile('wrangler.json', 'utf8'));
-  const domains = await verifyRemoteDomains(config, { token: process.env.CLOUDFLARE_API_TOKEN });
-  const [option, file] = process.argv.slice(2);
-  assert.ok((!option && !file) || (['--write-snapshot', '--compare-snapshot'].includes(option) && file), 'Unsupported domain verification arguments.');
-  if (option === '--write-snapshot') await writeFile(file, JSON.stringify(domains), { flag: 'wx', mode: 0o600 });
-  if (option === '--compare-snapshot') compareDomains(JSON.parse(await readFile(file, 'utf8')), domains);
-  console.log('Read-only Cloudflare verification passed: both production domains belong to the expected Worker and zone; bindings unchanged.');
+  const worker = await verifyRemoteWorker(config, { token, log: console.log });
+  if (options.has('--expect-version')) {
+    assert.equal(options.size, 1, 'Unexpected postdeployment verification arguments.');
+    assert.equal(worker.versionId, options.get('--expect-version'), 'Production API is not serving the uploaded version.');
+    await verifyUploadedVersion(worker.versionId, process.env.GITHUB_SHA, { token });
+    console.log('Worker API confirms the exact validated version is active at 100%.');
+    return;
+  }
+  const snapshot = { ...worker, publicCommit: await verifyPublicBaseline() };
+  if (options.has('--write-snapshot')) {
+    assert.equal(options.size, 1, 'Unexpected baseline verification arguments.');
+    await writeFile(options.get('--write-snapshot'), JSON.stringify(snapshot), { flag: 'wx', mode: 0o600 });
+  } else if (options.has('--compare-snapshot')) {
+    assert.equal(options.size, 2, 'Activation requires the baseline and uploaded version.');
+    compareWorkerSnapshot(JSON.parse(await readFile(options.get('--compare-snapshot'), 'utf8')), snapshot);
+    await verifyUploadedVersion(options.get('--uploaded-version'), process.env.GITHUB_SHA, { token });
+  } else assert.equal(options.size, 0, 'Unexpected release verification arguments.');
+  console.log('Pinned Worker, active deployment, public revision consistency and www redirect verified; no trigger API was called.');
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try { await main(); }
