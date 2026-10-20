@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
+import { cloudflareRequest } from './cloudflare-api.mjs';
 
 export function validateChangeset(changeset) {
   assert.ok(Array.isArray(changeset.added) && Array.isArray(changeset.updated) && Array.isArray(changeset.removed) && Array.isArray(changeset.conflicting), 'Unexpected Cloudflare changeset shape; refusing deployment.');
@@ -22,13 +23,23 @@ async function main() {
   const token = process.env.CLOUDFLARE_API_TOKEN;
   assert.ok(token, 'Missing stable CLOUDFLARE_API_TOKEN Actions secret; refusing deployment. Local Wrangler OAuth is not a release credential.');
   const origins = routes.map(route => ({ hostname: route.pattern, zone_id: route.zone_id }));
-  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${config.account_id}/workers/scripts/${config.name}/domains/changeset?replace_state=true`, {
-    method: 'POST', signal: AbortSignal.timeout(20000),
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(origins),
-  });
-  const payload = await response.json();
-  assert.ok(response.ok && payload.success, `Could not inspect domain changes (HTTP ${response.status}); refusing deployment.`);
+  let payload;
+  try {
+    payload = await cloudflareRequest(`/accounts/${config.account_id}/workers/scripts/${config.name}/domains/changeset?replace_state=true`, { token, method: 'POST', body: origins });
+  } catch (error) {
+    console.error(`Changeset preflight: ${error.message}`);
+    // Diagnostic only: a successful lookup does not bypass the current safety gate.
+    const query = new URLSearchParams({ service: config.name, zone_id: routes[0].zone_id });
+    try {
+      const domains = await cloudflareRequest(`/accounts/${config.account_id}/workers/domains?${query}`, { token });
+      assert.ok(Array.isArray(domains.result), 'Unexpected domain-list response.');
+      console.log('Read-only domain lookup:', JSON.stringify({
+        domains: domains.result.map(({ id, hostname, service, zone_id, environment, enabled, previews_enabled }) => ({ id, hostname, service, zone_id, environment, enabled, previews_enabled })),
+        result_info: domains.result_info,
+      }));
+    } catch (lookupError) { console.error(`Read-only domain lookup: ${lookupError.message}`); }
+    throw new Error('Cloudflare changeset verification failed; production publication remains blocked.');
+  }
   validateChangeset(payload.result);
   console.log('Cloudflare domain preflight passed: no DNS conflicts, domain transfers, or removals.');
 }

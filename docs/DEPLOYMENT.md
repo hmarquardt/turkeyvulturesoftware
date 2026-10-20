@@ -122,6 +122,10 @@ a local self-redirect. Keep this flag in both `npm run dev` and Playwright.
 - Wrangler account mismatch: stop; inspect `wrangler whoami` and the target config.
 - DNS API 403: the local OAuth lacks direct DNS scope; don’t infer DNS access from
   zone status. Custom Domains can provision their exact hostnames separately.
+- Domain preflight failure: logs include sanitized Cloudflare error codes and
+  messages, never credentials, authorization headers, or raw response bodies.
+  Invalid JSON and malformed schemas fail closed. A diagnostic read-only domain
+  lookup does not bypass the verification gate.
 - Domain conflict: inspect it with an authorized owner; do not overwrite blindly.
 - TLS not yet active: inspect Custom Domain/certificate state and wait for issuance;
   do not claim HTTPS until a public request succeeds.
