@@ -20,11 +20,7 @@ async function main() {
   }
   if (!routes.length) return;
   const token = process.env.CLOUDFLARE_API_TOKEN;
-  if (!token) {
-    assert.ok(!process.env.CI && process.stdout.isTTY, 'Deploy interactively with the local Wrangler login, or supply a stable CLOUDFLARE_API_TOKEN.');
-    console.log('Interactive local deployment: decline any unexpected domain/DNS conflict prompt.');
-    return;
-  }
+  assert.ok(token, 'Missing stable CLOUDFLARE_API_TOKEN Actions secret; refusing deployment. Local Wrangler OAuth is not a release credential.');
   const origins = routes.map(route => ({ hostname: route.pattern, zone_id: route.zone_id }));
   const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${config.account_id}/workers/scripts/${config.name}/domains/changeset?replace_state=true`, {
     method: 'POST', signal: AbortSignal.timeout(20000),

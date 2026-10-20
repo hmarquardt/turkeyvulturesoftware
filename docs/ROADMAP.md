@@ -6,15 +6,15 @@ Editorial homepage; four service areas; AI-forward engineering positioning; clea
 project process; Site Autopsy and project email preparation; privacy and useful
 404; responsive/reduced-motion navigation; self-hosted original imagery; metadata,
 social card, robots, sitemap, revision endpoint; secure Cloudflare Worker; tested
-and documented GitHub Actions deployment pipeline with credential gating.
+and documented GitHub Actions validate/deploy/verify pipeline triggered by main pushes.
 
 No automated audit, fake scores, contact database, online submission claim,
 client logos, invented case studies, blog, login, billing, portal, or CMS.
 
 ## Next priorities
 
-1. Complete unattended deployment by supplying the existing stable account-owned
-   Cloudflare token to this repository and enabling the gated Actions deploy job.
+1. Verify unattended deployment by supplying the existing stable account-owned
+   Cloudflare token as the repository Actions secret and pushing to main.
 2. Establish a project-specific mailbox and verify delivery/reply handling, then
    replace email preparation with protected Worker submission. Keep direct email.
 3. Build a narrowly scoped, permission-aware Site Autopsy engine only after the

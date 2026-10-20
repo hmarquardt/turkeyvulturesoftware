@@ -12,7 +12,7 @@
     "check": "node scripts/check.mjs && node --test tests/*.test.mjs",
     "test": "playwright test",
     "test:all": "npm run check && npm run build && npm test",
-    "deploy": "npm run build && node scripts/check-cloudflare-target.mjs && wrangler deploy --no-x-provision",
+    "deploy": "node scripts/refuse-direct-deploy.mjs",
     "verify:production": "node scripts/verify-production.mjs"
   },
   "devDependencies": {
@@ -20,6 +20,7 @@
     "@playwright/test": "1.64.1",
     "html-validate": "11.16.2",
     "sharp": "0.35.5",
-    "wrangler": "4.151.1"
+    "wrangler": "4.151.1",
+    "yaml": "2.9.1"
   }
 }

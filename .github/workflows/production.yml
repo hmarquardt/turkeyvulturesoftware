@@ -25,9 +25,6 @@ jobs:
       - run: npx wrangler deploy --dry-run --outdir .wrangler/dry-run
       - run: npx playwright install --with-deps chromium
       - run: npm test
-      - name: Explain deployment gate
-        if: vars.CLOUDFLARE_DEPLOY_ENABLED != 'true' && github.ref == 'refs/heads/main'
-        run: echo 'Validation only. Add the stable CLOUDFLARE_API_TOKEN repository secret and set CLOUDFLARE_DEPLOY_ENABLED=true to enable unattended production deployment.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
@@ -37,7 +34,7 @@ jobs:
             test-results/
           retention-days: 7
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLOUDFLARE_DEPLOY_ENABLED == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -58,7 +55,17 @@ jobs:
             exit 1
           fi
       - run: npm ci
-      - run: npm run deploy
+      - run: npm run build
+      - name: Refuse conflicting DNS or domain changes
+        run: node scripts/check-cloudflare-target.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      - run: npm run verify:production
+      - name: Deploy the validated commit to the existing Worker
+        run: npx wrangler deploy --no-x-provision --tag "$GITHUB_SHA" --message "GitHub Actions release $GITHUB_SHA (run $GITHUB_RUN_ID)"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Verify the deployed HTTPS revision
+        run: npm run verify:production
+      - name: Record verified release
+        run: |
+          echo "Deployed and verified commit $GITHUB_SHA at https://turkeyvulturesoftware.com from GitHub Actions run $GITHUB_RUN_ID." >> "$GITHUB_STEP_SUMMARY"

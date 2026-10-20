@@ -27,13 +27,23 @@ Target repository: `hmarquardt/turkeyvulturesoftware`, branch `main`.
 Cloudflare Worker: `turkey-vulture-software` in the verified account in `wrangler.json`.
 Production domain: `turkeyvulturesoftware.com` (Cloudflare zone verified October 20, 2026).
 
-GitHub Actions validates every PR/push; production deployment is gated by the
-repository variable `CLOUDFLARE_DEPLOY_ENABLED=true` and Actions secret
-`CLOUDFLARE_API_TOKEN`. Use the existing account-owned deployment credential,
-not a rotating Wrangler OAuth session. Until supplied, Actions validation runs
-and the deploy job is explicitly skipped. An authenticated local bootstrap can
-publish the same tested commit. See [deployment](docs/DEPLOYMENT.md) for actual
-verification status, domain activation, required permissions, and rollback.
+**Git push is the production deployment trigger.** Push to `origin/main` (or merge
+a pull request) and GitHub Actions installs dependencies, checks HTML/links and
+routing, builds, runs browser/accessibility tests, deploys the validated commit
+to the existing Cloudflare Worker, and verifies the HTTPS revision. Failed
+validation prevents deployment. Pull requests validate without deploying.
+
+```sh
+git push origin main
+```
+
+The workflow uses the repository Actions secret `CLOUDFLARE_API_TOKEN`, never a
+local developer login. No opt-in deployment variable is required. A missing or
+invalid secret fails the deployment visibly; it does not silently skip it.
+`npm run deploy` deliberately refuses local publication, following CFLab's pattern.
+Local Wrangler is for development and dry-run validation, not routine releases.
+See [the deployment runbook](docs/DEPLOYMENT.md) for credentials, CI verification,
+the historical bootstrap, and rollback.
 
 ## What ships
 
@@ -57,7 +67,7 @@ until the project mailbox and delivery path are verified end to end.
 - `public/`: the only copied production asset directory; no third-party runtime assets.
 - `scripts/`: deterministic build, checks, production verification.
 - `tests/`: Node contract tests and Playwright/axe browser checks.
-- `.github/workflows/production.yml`: validated, gated Cloudflare release pipeline.
+- `.github/workflows/production.yml`: automatic validate → deploy → verify pipeline for main pushes.
 - `docs/`: brand, architecture, deployment, roadmap, and image provenance.
 
 ## Ownership

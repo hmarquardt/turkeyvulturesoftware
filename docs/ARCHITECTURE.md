@@ -51,7 +51,8 @@ so a script failure cannot leak contact fields into a GET query.
 
 Production: Cloudflare and the visitor’s chosen email service. All site assets
 are self-hosted. No analytics or third-party browser requests.
-Development: Wrangler, Playwright, axe, html-validate, and sharp (asset preparation).
+Development: Wrangler, Playwright, axe, html-validate, sharp (asset preparation),
+and yaml (release-policy regression checks).
 Cloudflare authentication stays in local Wrangler state or an Actions secret.
 Current browser helpers never fetch user-provided URLs; adding scanning requires
 a separate SSRF/permission/resource-limit design.

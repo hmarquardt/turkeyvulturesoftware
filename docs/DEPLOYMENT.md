@@ -13,43 +13,72 @@
 Discovery date: October 20, 2026. A zone alone does not establish live hosting.
 See the release verification record below for actual deployment results.
 
-## Local deployment
+## Canonical release process: Git push
+
+Push a reviewed commit to `origin/main`, or merge a pull request into main:
+
+```sh
+git push origin main
+```
+
+`.github/workflows/production.yml` automatically performs:
+
+1. **Validate:** `npm ci`, `npm run check` (HTML, links, targets, Node tests),
+   `npm run build`, Wrangler dry-run, and Playwright/axe browser tests.
+2. **Deploy:** only on main and only after the validation job succeeds
+   (`needs: validate`). Check out that same commit, install dependencies, require
+   the Actions secret, rebuild, refuse conflicting domain/DNS changes, and deploy
+   only the existing `turkey-vulture-software` Worker with implicit provisioning
+   disabled. The Cloudflare version is tagged with the Git SHA and workflow run.
+3. **Verify:** check production HTTPS, pages/assets, security headers, 404 handling,
+   the www redirect with path/query, and `/version.json` against `GITHUB_SHA`.
+   A successful upload alone is not a successful release.
+
+Pull requests run validation only. A failed validation job blocks the deployment
+job. Actions are pinned to commit SHAs, Node 24 and the lockfile are used, and main
+releases serialize without interrupting an in-progress deployment. This follows
+the existing AI Small Business Guru validate/deploy split and CFLab's explicit
+CI publishing and local-deploy refusal patterns. No second Cloudflare Git build
+integration or GitHub Pages deployment is used.
+
+No `CLOUDFLARE_DEPLOY_ENABLED` variable is required or consulted. Every main push
+attempts deployment after validation; missing credentials fail visibly.
+
+## GitHub Actions credential
+
+Set the repository Actions secret **`CLOUDFLARE_API_TOKEN`** to the existing stable
+Cloudflare deployment token for account `b1aa310aa0a1638d72b8b086a21e557c`.
+It needs Workers Scripts Edit and Workers Routes Edit for this account and zone.
+The account and zone IDs in `wrangler.json` are non-secret configuration.
+
+[Repository Actions secrets](https://github.com/hmarquardt/turkeyvulturesoftware/settings/secrets/actions)
+are the credential source. A stable credential can be installed with `gh secret set
+CLOUDFLARE_API_TOKEN --repo hmarquardt/turkeyvulturesoftware` using secure stdin.
+Never put secret values in commands, logs, source, or docs. Do not copy a rotating
+Wrangler OAuth login into CI. GitHub does not reveal secret values from other
+repositories, so an existing secret cannot be retrieved through its API.
+
+A missing/invalid token fails before production publication. Fix the repository
+secret and re-run the failed workflow or push the next reviewed commit. Do not
+fall back to a local production deploy. No developer login is needed by CI.
+
+## Local development and verification
 
 ```sh
 npm ci
-npm run check
-npm run build
-npm test
+npm run dev
+# Or run all quality gates without publishing:
+npm run test:all
 npx wrangler deploy --dry-run
-# From a clean, committed checkout with the existing authenticated account:
-npm run deploy
+# Read-only verification of a committed production revision:
 EXPECTED_COMMIT=$(git rev-parse HEAD) npm run verify:production
 ```
 
-Use Wrangler login for local operator deployment. Never print the login token or
-copy its rotating OAuth token into GitHub. `dist/version.json` records `HEAD`
-(or `GITHUB_SHA` in CI); the initial uncommitted preview says `uncommitted`.
-Production verification checks HTTPS pages, headers, revision, metadata, assets,
-404 behavior, and the www redirect with a path/query.
-
-## GitHub Actions
-
-`.github/workflows/production.yml` runs HTML/link/target checks, Node tests, build,
-Wrangler dry-run, and Playwright/axe on PRs and main pushes. Actions are pinned to
-commit SHAs; Node 24 and npm lockfile installs are used. Concurrent production
-releases serialize. Pull requests cannot deploy.
-
-Unattended deployment requires **repository secret `CLOUDFLARE_API_TOKEN`**, an
-existing account-owned token with Workers Scripts Edit and Workers Routes Edit
-for the verified account/domain. No secret values belong in docs or source.
-A rotating local OAuth session is not a suitable substitute.
-
-After installing the credential, set **repository variable
-`CLOUDFLARE_DEPLOY_ENABLED=true`**. The deploy job checks for the secret, rebuilds
-the validated commit, refuses conflicting DNS/domain changes through a fail-closed preflight, deploys only this Worker, then checks the production revision
-over HTTPS. With the variable unset, the workflow explicitly reports that only
-validation is enabled. Do not enable a second Cloudflare Git build integration.
-No GitHub Pages deployment is used.
+`npm run deploy` deliberately exits with an explanation and publishes nothing,
+matching CFLab. Local `wrangler deploy` is not a release mechanism. Wrangler's
+local runtime and dry-run are development tools only. `version.json` contains
+`GITHUB_SHA` in Actions and HEAD during local builds; uncommitted initial previews
+use `uncommitted`.
 
 ## Domain, DNS, HTTPS
 
@@ -96,19 +125,30 @@ a local self-redirect. Keep this flag in both `npm run dev` and Playwright.
 - Domain conflict: inspect it with an authorized owner; do not overwrite blindly.
 - TLS not yet active: inspect Custom Domain/certificate state and wait for issuance;
   do not claim HTTPS until a public request succeeds.
-- CI deploy skipped: install the stable secret and enable the variable above.
+- CI deployment fails at the secret check: install the stable repository secret;
+  the workflow never silently skips main deployment because a variable is unset.
 - CI revision mismatch: inspect the deploy log, domain binding, and `/version.json`;
   do not accept HTTP 200 alone as release verification.
 - Email app doesn’t open: copy the prepared message into webmail; nothing was sent.
 
-Rollback with `npx wrangler deployments list`, then `npx wrangler rollback <VERSION_ID>`
-for this Worker only. Verify the selected version and production afterward; record
-the resulting revision. Prefer reverting the bad commit and letting CI redeploy so
-Git remains the source of truth. Do not reset or force-push `main`.
+For rollback, revert the bad change in Git and push to main so the same pipeline
+validates, deploys, and verifies the revert. Never reset or force-push main.
+A direct Cloudflare rollback is an exceptional operator recovery action requiring
+explicit authorization; record it and reconcile Git afterward. Do not use it for
+normal releases.
 
 ## Release verification record
 
-October 20, 2026 bootstrap:
+### Historical manual bootstrap — October 20, 2026
+
+Both previous production deployments were **manual**, using the local Wrangler
+OAuth login. Actions validated the commits but skipped the deploy job because
+its opt-in variable was unset and no Actions deployment secret was available.
+The first created the Worker; the second retained the verified domain bindings
+and added production hardening. These were initial setup actions, not a successful
+CI/CD release, and must not be repeated as the normal release process.
+
+Historical evidence:
 
 - Initial commit: `ffc3558e8c62305cd626be7b16ab9ba7731dd7eb`, pushed to origin/main.
 - First Worker version: `e532d2c1-b0be-4cb8-89fa-1e60dd4ed308`.
@@ -126,6 +166,17 @@ October 20, 2026 bootstrap:
 - No brand-domain mailbox or delivery engine was enabled; email draft/copy intake
   uses the owner's existing public contact address, not a fabricated mailbox.
 
-The final follow-up commits retain exact Custom Domain configuration and this
-operational record. `/version.json` is the authoritative current deployed SHA;
-compare it to origin/main with `npm run verify:production`.
+### GitHub Actions release correction
+
+Removed the silent opt-in gate, retained validation as a required dependency,
+made local `npm run deploy` refuse publication, removed local OAuth fallback from
+the credential preflight, and documented Git push as the canonical release path.
+Existing Cloudflare resources are retained unchanged.
+
+Credential discovery found no target-repository secret or available stable local
+deployment token. The local OAuth login returns HTTP 403 for token management.
+CI deployment verification remains blocked until the stable repository secret is
+installed. This is a credential blocker, not permission to deploy locally.
+
+`/version.json` is the authoritative current deployed SHA; compare it to the
+actual main-push workflow's `headSha` and require both validate and deploy to pass.

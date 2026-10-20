@@ -47,10 +47,22 @@ references. Never edit, deploy, or change their repository secrets/resources.
 Use `main`, inspect status/history/remote before pushing, and never force-push over
 unexpected remote history. Keep `.gitignore` and these docs in place before the
 initial commit. Inspect staged content for secrets and generated artifacts.
-Production uses GitHub Actions and Cloudflare Workers Static Assets, never GitHub
-Pages. PRs validate but never deploy. The deploy variable is enabled only after a
-stable account-owned Actions credential is installed. Local bootstrap releases
-must use a committed, tested revision and be recorded honestly.
+Production releases are driven only by GitHub Actions: push to `origin/main` →
+validate → deploy → verify. Failed validation must prevent deployment. Pull
+requests validate but never deploy. Preserve `needs: validate` and the main-only,
+non-PR deploy condition; do not add a silent opt-in deployment gate.
+
+`npm run deploy` intentionally refuses to publish, matching CFLab's policy.
+Do not run local `wrangler deploy` or use a local OAuth session for releases.
+Wrangler development and `deploy --dry-run` are allowed locally. The initial
+manual deployments are historical bootstrap work, not the release process.
+Credentials must come from the repository Actions secret `CLOUDFLARE_API_TOKEN`.
+Missing credentials are a visible CI failure, never a reason to deploy locally.
+
+After deployment changes, push an actual commit and verify both the Actions
+validate/deploy jobs and production `/version.json` against that commit. Keep the
+existing Worker, domains, DNS and certificates; do not recreate them to change CI.
+Rollback normally means reverting the change and pushing through the same pipeline.
 
 Update README and affected docs when behavior, commands, architecture, brand,
 resource IDs, deployment status, dependencies, or data handling change. Distinguish
