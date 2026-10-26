@@ -19,6 +19,22 @@ export function layout(page) {
 <title>${escape(page.title)}</title>
 <meta name="description" content="${escape(page.description)}">
 ${page.noindex ? '<meta name="robots" content="noindex, follow">' : `<link rel="canonical" href="${origin}${path}">`}
+<script type="application/ld+json">
+${JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  '@id': origin + '/#organization',
+  name: 'Turkey Vulture Software',
+  url: origin + '/',
+  description: 'Independent website rescue, custom software development, AI and business automation, and cloud engineering.',
+  email: contactEmail,
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'sales',
+    url: origin + '/contact'
+  }
+})}
+</script>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Turkey Vulture Software">
 <meta property="og:title" content="${escape(page.title)}">
