@@ -14,6 +14,14 @@ for (const page of pages) {
     else assert.ok(pages.some(p => p.path === url.pathname), `Broken link: ${match[1]}`);
   }
 }
+for (const page of pages) {
+  const match = layout(page).match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  assert.ok(match, `${page.path}: organization JSON-LD is required`);
+  const data = JSON.parse(match[1]);
+  assert.equal(data['@type'], 'Organization');
+  assert.equal(data.url, origin + '/');
+  assert.equal(data.email, contactEmail);
+}
 assert.equal(contactEmail, 'contact@turkeyvulturesoftware.com');
 assert.equal(hankEmail, 'hank@turkeyvulturesoftware.com');
 assert.match(turnstileSiteKey, /^0x[0-9A-Za-z_-]{20,}$/);
