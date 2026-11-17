@@ -139,6 +139,15 @@ Logs contain only the request ID and provider error code, never inquiry content.
 
 ## Files
 
+Social previews use complete Open Graph and explicit X Card metadata rendered at
+build time, with a self-hosted 1200 × 630 JPEG at `/assets/social-v2.jpg`.
+`npm run check` validates metadata and decodes the local image; `npm test` checks
+the built HTTP responses without JavaScript.
+`EXPECTED_COMMIT=$(git rev-parse HEAD) npm run verify:production` verifies the actual deployed HTML, image bytes,
+robots, redirects, and revision for ordinary, X, Facebook, and LinkedIn user
+agents. Platform rendering remains a separate manual check. See
+[social preview operations](docs/SOCIAL-PREVIEWS.md).
+
 - `src/pages.mjs`: shared HTML layout, content, metadata; rendered during build.
 - `src/worker.mjs`: domain redirects, security headers, static delivery, method limits, and the validated `/api/contact` endpoint.
 - `public/`: the only copied production asset directory; all site code is self-hosted.

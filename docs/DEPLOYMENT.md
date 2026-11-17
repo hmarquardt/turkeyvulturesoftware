@@ -94,6 +94,32 @@ does not derive a production host and rewrite redirects into a local loop.
 `dist/version.json` records `GITHUB_SHA` in Actions, HEAD for local builds, and
 `uncommitted` for the original pre-commit preview.
 
+## Social preview release checks
+
+Future changes to branding, templates, routing, assets, or deployment must preserve
+social previews and fix any related defect during that release. The shared layout
+emits Open Graph and explicit X title/description/image/alt metadata in initial
+HTML. Its absolute production image URL is `/assets/social-v2.jpg`: a public
+1200 × 630 JPEG with `Content-Type: image/jpeg`. Keep older image URLs accessible.
+
+`npm run check` validates the metadata contract and actual raster, while `npm test`
+checks the built HTTP HTML and asset without executing JavaScript. The existing
+post-activation `npm run verify:production` step now fetches production HTML,
+robots, and the declared image as ordinary, X, Facebook, and LinkedIn clients;
+checks bytes, dimensions, MIME and blocking directives; and checks canonical
+redirects and a harmless homepage query. It still requires the exact release SHA
+at apex and workers.dev and the path/query-preserving www redirect. Run it after
+every deployment with `EXPECTED_COMMIT=$(git rev-parse HEAD)` locally, or
+`GITHUB_SHA` in Actions. Any failed check fails the release verification.
+
+Missing assets in the upload, incorrect canonical/image origins, HTML-only
+fallbacks returning 200 for a missing image, MIME/header changes, stale HTML,
+redirect loops, restrictive robots rules, or bot challenges can all break shares.
+Do not weaken the security policy or change infrastructure speculatively. Use
+[the diagnosis and verification guide](SOCIAL-PREVIEWS.md) to isolate the failure.
+Successful HTTP checks do not prove a platform rendered a card; inspect a newly
+composed share separately. Existing platform caches may retain old results.
+
 ## Operations
 
 - **403 / code 10000:** inspect the failed endpoint and its accepted permission

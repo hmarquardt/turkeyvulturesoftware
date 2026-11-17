@@ -2,10 +2,19 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { HtmlValidate } from 'html-validate';
 import { pages, layout, origin, contactEmail, hankEmail, turnstileSiteKey } from '../src/pages.mjs';
+import { validateSocialHtml, validateSocialImage } from './social-preview.mjs';
 const validator = new HtmlValidate({ extends: ['html-validate:recommended'], rules: { 'no-trailing-whitespace': 'off', 'long-title': 'off', 'svg-focusable': 'off' } });
 const analytics = await readFile('public/assets/analytics.js', 'utf8');
+const checkedSocialImages = new Set();
 for (const page of pages) {
   const html = layout(page);
+  if (!page.noindex) {
+    const { image, type } = validateSocialHtml(html, `${origin}${page.path}`);
+    if (!checkedSocialImages.has(image)) {
+      await validateSocialImage(await readFile(`public${new URL(image).pathname}`), type);
+      checkedSocialImages.add(image);
+    }
+  }
   const report = await validator.validateString(html);
   assert.ok(report.valid, `${page.path}: ${JSON.stringify(report.results.flatMap(r => r.messages))}`);
   for (const match of html.matchAll(/(?:href|src)="(\/[^"]*)"/g)) {

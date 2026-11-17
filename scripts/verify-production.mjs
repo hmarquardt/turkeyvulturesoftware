@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { setTimeout } from 'node:timers/promises';
 import { TARGET, readPublicRevision } from './check-cloudflare-target.mjs';
+import { verifySocialPreview } from './social-preview.mjs';
 const site = process.env.SITE_URL || 'https://turkeyvulturesoftware.com';
 const expected = process.env.EXPECTED_COMMIT || process.env.GITHUB_SHA;
 assert.ok(expected && /^[a-f0-9]{40}$/.test(expected), 'Set EXPECTED_COMMIT or GITHUB_SHA to a full committed revision.');
@@ -20,6 +21,7 @@ for (let attempt = 0; attempt < 8; attempt++) {
 }
 assert.equal(actual, expected, 'Production must serve the committed release.');
 assert.equal(await readPublicRevision(TARGET.workerSite), expected, 'Known Worker endpoint must serve the same committed release.');
+await verifySocialPreview(site);
 for (const path of ['/', '/how-we-build', '/contact', '/site-autopsy', '/privacy', '/robots.txt', '/sitemap.xml', '/assets/social.jpg', '/assets/vulture-640.webp', '/assets/analytics.js']) {
   const response = await get(path);
   assert.equal(response.status, 200, `${path} status`);

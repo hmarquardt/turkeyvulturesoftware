@@ -2,6 +2,8 @@ export const origin = 'https://turkeyvulturesoftware.com';
 export const contactEmail = 'contact@turkeyvulturesoftware.com';
 export const hankEmail = 'hank@turkeyvulturesoftware.com';
 export const turnstileSiteKey = '0x4AAAAAAFeHtz7R-7fjltLE';
+export const socialImage = '/assets/social-v2.jpg';
+const socialImageAlt = 'Turkey Vulture — Good instincts. Better software. A red-headed turkey vulture with wings spread in warm light.';
 const arrow = '<span aria-hidden="true">↗</span>';
 export const mark = `<svg viewBox="0 0 64 40" fill="none" aria-hidden="true"><path d="M3 8C13 9 18 14 26 19L30 16L31 10L36 7L42 9L38 13L37 19C45 15 50 11 61 10L49 23L39 26L33 36L29 26L17 23Z" fill="currentColor"/><circle cx="36" cy="10" r="1" fill="#171917"/></svg>`;
 const button = (href, text, secondary = false) => `<a class="button${secondary ? ' button-secondary' : ''}" href="${href}">${text}${arrow}</a>`;
@@ -40,11 +42,16 @@ ${JSON.stringify({
 <meta property="og:title" content="${escape(page.title)}">
 <meta property="og:description" content="${escape(page.description)}">
 <meta property="og:url" content="${origin}${path}">
-<meta property="og:image" content="${origin}/assets/social.jpg">
+<meta property="og:image" content="${origin}${socialImage}">
+<meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Turkey Vulture — Software, Websites &amp; Automation. A red-headed turkey vulture in warm light.">
+<meta property="og:image:alt" content="${escape(socialImageAlt)}">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${escape(page.title)}">
+<meta name="twitter:description" content="${escape(page.description)}">
+<meta name="twitter:image" content="${origin}${socialImage}">
+<meta name="twitter:image:alt" content="${escape(socialImageAlt)}">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/site.css">
 ${path === '/' ? '<link rel="preload" as="image" href="/assets/vulture-960.webp" imagesrcset="/assets/vulture-640.webp 640w, /assets/vulture-960.webp 960w, /assets/vulture-1086.webp 1086w" imagesizes="(max-width: 700px) 100vw, 50vw">' : ''}

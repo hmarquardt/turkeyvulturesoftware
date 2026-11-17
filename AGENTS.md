@@ -49,6 +49,24 @@ Inspect screenshots for visual changes; accessibility checks do not judge design
 Do not add tests that merely repeat markup. Never send test inquiries to a real
 recipient without explicit authorization.
 
+## Social previews
+
+Branding, shared templates, asset builds, routing, headers, caching, and deployment
+changes must preserve social previews and resolve related defects in the same
+deployment cycle. Keep one complete Open Graph and explicit X Card set in the
+initial HTML head, with consistent title/description, canonical and `og:url`, and
+absolute HTTPS raster image URLs. The active image is
+`public/assets/social-v2.jpg`, a branded 1200 × 630 JPEG; retain older image URLs
+for cached shares. Preserve image MIME, dimensions, alt text, public GET access,
+permissive social crawling, and canonical redirects. See `docs/ASSETS.md` for
+provenance and `docs/SOCIAL-PREVIEWS.md` for requirements and diagnosis.
+
+Run `npm run check`, `npm run build`, and `npm test` before release. After every
+deployment, run `EXPECTED_COMMIT=$(git rev-parse HEAD) npm run verify:production`
+and require its social crawler/image checks to pass against production. A build,
+HTTP 200, or spoofed crawler user agent alone does not prove rendering on X,
+Facebook, or LinkedIn. Record platform rendering as unverified until observed.
+
 ## Security and resources
 
 Never commit or print tokens, OAuth sessions, `.env`, `.dev.vars`, private keys,
